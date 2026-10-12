@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
@@ -256,6 +257,17 @@ app.get('/api/db/status', async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+app.get('/api/db/dump', (req, res) => {
+  const filePath = path.join(process.cwd(), 'complete_database_dump.sql');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="adgu_complete_database_dump.sql"');
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Dump not found');
   }
 });
 

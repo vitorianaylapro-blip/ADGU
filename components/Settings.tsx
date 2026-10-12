@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { getSettings, saveSettings, SystemSettings, getDatabaseStatus, syncAllLocalDataToDatabase, seedSampleDataToDatabase } from '../services/storageService';
 import { getGoogleClientId, saveGoogleClientId } from '../services/googleDriveService';
-import { Camera, Save, Loader2, CheckCircle, Building2, User, Mail, MapPin, Hash, Clock, Link, Cloud, ExternalLink, Database, Server, Check, RefreshCw, UploadCloud, Sparkles } from 'lucide-react';
+import { Camera, Save, Loader2, CheckCircle, Building2, User, Mail, MapPin, Hash, Clock, Link, Cloud, ExternalLink, Database, Server, Check, RefreshCw, UploadCloud, Sparkles, Download } from 'lucide-react';
 
 export const Settings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings>({
@@ -372,6 +372,14 @@ export const Settings: React.FC = () => {
                 {isSeeding ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} className="text-amber-500" />}
                 Carregar Exemplo no Banco
               </button>
+              <a
+                href="/api/db/dump"
+                download="adgu_complete_database_dump.sql"
+                className="px-4 py-2.5 bg-slate-900 text-white rounded-xl font-black text-[8px] uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center gap-1.5 active-scale shadow-sm"
+              >
+                <Download size={13} />
+                Baixar Script SQL Completo
+              </a>
             </div>
           </div>
 
