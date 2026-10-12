@@ -1,0 +1,23 @@
+
+{
+  "short_name": "ADGU",
+  "name": "AD Geração Unida - Gestão Financeira",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3396/3396914.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3396/3396914.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#ffffff",
+  "orientation": "portrait"
+}
