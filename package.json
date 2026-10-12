@@ -5,14 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "build": "vite build",
+    "start": "node server-dist/server.cjs",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "build:server": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=server-dist/server.cjs"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
     "@neondatabase/serverless": "^1.1.0",
+    "@netlify/database": "^2.0.1",
     "@supabase/supabase-js": "2.39.7",
     "@tailwindcss/vite": "^4.2.2",
     "@types/ws": "^8.18.1",
@@ -25,6 +27,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "recharts": "^3.7.0",
+    "serverless-http": "^4.0.0",
     "tailwindcss": "^4.2.2",
     "ws": "^8.21.3"
   },
