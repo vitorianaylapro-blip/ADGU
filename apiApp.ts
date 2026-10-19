@@ -78,10 +78,12 @@ export async function initDb() {
             pastorrole TEXT DEFAULT 'Pastor Presidente / Dirigente',
             logo TEXT DEFAULT '',
             closingday INTEGER DEFAULT 1,
+            congregationpastors JSONB DEFAULT '{}',
             CONSTRAINT single_row CHECK (id = 1)
         );
 
         ALTER TABLE settings ADD COLUMN IF NOT EXISTS treasurersignature TEXT;
+        ALTER TABLE settings ADD COLUMN IF NOT EXISTS congregationpastors JSONB DEFAULT '{}';
 
         CREATE TABLE IF NOT EXISTS users (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -527,7 +529,8 @@ apiRouter.get('/settings', async (req, res) => {
       pastorName: r.pastorname || 'Pr. Antônio Chaves Crus',
       pastorRole: r.pastorrole || 'Pastor Presidente / Dirigente',
       closingDay: Number(r.closingday) || 1,
-      logo: r.logo || ''
+      logo: r.logo || '',
+      congregationPastors: r.congregationpastors || {}
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -538,8 +541,8 @@ apiRouter.post('/settings', async (req, res) => {
   try {
     const s = req.body;
     await pool.query(
-      `INSERT INTO settings (id, institutionname, cnpj, address, email, president, treasurername, treasurerrole, treasurersignature, pastorname, pastorrole, closingday, logo)
-       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO settings (id, institutionname, cnpj, address, email, president, treasurername, treasurerrole, treasurersignature, pastorname, pastorrole, closingday, logo, congregationpastors)
+       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT (id) DO UPDATE SET
          institutionname = EXCLUDED.institutionname,
          cnpj = EXCLUDED.cnpj,
@@ -552,7 +555,8 @@ apiRouter.post('/settings', async (req, res) => {
          pastorname = EXCLUDED.pastorname,
          pastorrole = EXCLUDED.pastorrole,
          closingday = EXCLUDED.closingday,
-         logo = EXCLUDED.logo`,
+         logo = EXCLUDED.logo,
+         congregationpastors = EXCLUDED.congregationpastors`,
       [
         s.institutionName,
         s.cnpj,
@@ -565,7 +569,8 @@ apiRouter.post('/settings', async (req, res) => {
         s.pastorName,
         s.pastorRole,
         s.closingDay || 1,
-        s.logo || ''
+        s.logo || '',
+        JSON.stringify(s.congregationPastors || {})
       ]
     );
     res.json({ success: true });

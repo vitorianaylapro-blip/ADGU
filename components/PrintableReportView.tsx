@@ -8,6 +8,7 @@ import {
   OfficialReportPDFData,
   SystemSettings,
   isReportExemptFromDiscount,
+  getPastorForInstitution,
 } from '../services/reportPdfService';
 import { Logo } from './Logo';
 
@@ -84,18 +85,24 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
     ('cnpj' in report ? report.cnpj : '') ||
     '49.386.673/0001-10';
 
+  const targetInstitution = ('institutionName' in report ? (report as any).institutionName : '') || '';
+  const pastorInfo = getPastorForInstitution(targetInstitution || institutionTitle, settings);
+  const pastorNameDisplay = pastorInfo.pastorName;
+  const pastorRoleDisplay = pastorInfo.pastorRole;
+
   const president =
     settings?.president ||
     settings?.pastorName ||
-    ('president' in report ? report.president : '') ||
+    ('president' in report ? (report as any).president : '') ||
     'Pr. Antônio Chaves Crus';
 
   const treasurerName =
-    ('reporterName' in report ? report.reporterName : '') ||
+    ('reporterName' in report ? (report as any).reporterName : '') ||
     settings?.treasurerName ||
     'TESOUREIRO RESPONSÁVEL';
   const treasurerRole = settings?.treasurerRole || 'Tesoureiro Local';
   const pastorRole = settings?.pastorRole || 'Pastor Presidente';
+  const treasurerSig = settings?.treasurerSignature || localStorage.getItem('adgu_treasurer_signature') || '';
 
   // -------------------------------------------------------------
   // MODO 1: RELATÓRIO GERAL CONSOLIDADO (EXCLUSIVO DO ADMINISTRADOR)
@@ -194,6 +201,11 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
           {/* Assinaturas */}
           <div className="grid grid-cols-2 gap-10 pt-6 px-4 print:pt-5">
             <div className="text-center">
+              <div className="h-14 flex items-center justify-center">
+                {treasurerSig ? (
+                  <img src={treasurerSig} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
+                ) : null}
+              </div>
               <div className="border-t border-slate-400 pt-1.5">
                 <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
                   {(settings?.treasurerName || 'TESOUREIRO GERAL').toUpperCase()}
@@ -204,6 +216,7 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
               </div>
             </div>
             <div className="text-center">
+              <div className="h-14 flex items-center justify-center" />
               <div className="border-t border-slate-400 pt-1.5">
                 <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
                   {president.toUpperCase()}
@@ -455,9 +468,9 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
           <div className="grid grid-cols-2 gap-10">
             <div className="text-center">
               <div className="h-16 flex items-center justify-center">
-                {settings?.treasurerSignature && (
-                  <img src={settings.treasurerSignature} className="max-h-full object-contain" alt="Assinatura" />
-                )}
+                {treasurerSig ? (
+                  <img src={treasurerSig} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
+                ) : null}
               </div>
               <div className="border-t border-slate-400 pt-1.5">
                 <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
@@ -468,13 +481,13 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
             </div>
             <div className="text-center">
               <div className="h-16 flex items-center justify-center">
-                {/* Space for Pastor Signature if needed, or keep empty */}
+                {/* Space for Pastor Signature */}
               </div>
               <div className="border-t border-slate-400 pt-1.5">
                 <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
-                  {president.toUpperCase()}
+                  {pastorNameDisplay.toUpperCase()}
                 </p>
-                <p className="text-[9px] text-slate-500 leading-tight">{pastorRole}</p>
+                <p className="text-[9px] text-slate-500 leading-tight">{pastorRoleDisplay}</p>
               </div>
             </div>
           </div>

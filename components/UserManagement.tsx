@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserAccount, UserSession } from '../types';
 import { getUsers, updateUserStatus, saveUser, deleteUser } from '../services/storageService';
+import { removeSignatureBackground } from '../services/signatureService';
 import { UserCheck, UserX, Mail, Phone, PlusCircle, X, Loader2, CheckCircle, Shield, Key, UserCircle, Edit3, RefreshCw, Trash2, AlertTriangle, UploadCloud } from 'lucide-react';
 
 export const UserManagement: React.FC<{ session: UserSession }> = ({ session }) => {
@@ -138,36 +139,15 @@ export const UserManagement: React.FC<{ session: UserSession }> = ({ session }) 
     }
   };
 
-  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-              if (r > 200 && g > 200 && b > 200) {
-                data[i + 3] = 0;
-              }
-            }
-            ctx.putImageData(imageData, 0, 0);
-            setFormData({ ...formData, signature: canvas.toDataURL('image/png') });
-          }
-        };
-        img.src = event.target?.result as string;
-      };
-      reader.readAsDataURL(file);
+      try {
+        const cleanSig = await removeSignatureBackground(file, { inkMode: 'BLUE' });
+        setFormData({ ...formData, signature: cleanSig });
+      } catch (err) {
+        console.error("Erro ao processar assinatura:", err);
+      }
     }
   };
 

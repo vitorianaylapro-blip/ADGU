@@ -40,7 +40,6 @@ export const removeSignatureBackground = async (
   options: ProcessSignatureOptions = {}
 ): Promise<string> => {
   const {
-    threshold = 195,
     inkMode = 'BLUE'
   } = options;
 
@@ -51,8 +50,8 @@ export const removeSignatureBackground = async (
     img.crossOrigin = 'anonymous';
 
     img.onload = () => {
-      // Limitar dimensões para evitar travamento em fotos 4K de celular
-      const maxDim = 1200;
+      // 1. Limitar dimensões para evitar lentidão e payload gigante de base64
+      const maxDim = 1000;
       let w = img.width;
       let h = img.height;
 
@@ -80,13 +79,42 @@ export const removeSignatureBackground = async (
       const imgData = ctx.getImageData(0, 0, w, h);
       const data = imgData.data;
 
+      // 2. Amostrar bordas (perímetro) da foto para detectar a luminosidade média do papel
+      let bgLumaSum = 0;
+      let bgCount = 0;
+      const step = 4;
+
+      // Topo e Fundo
+      for (let x = 0; x < w; x += step) {
+        const iTop = (0 * w + x) * 4;
+        bgLumaSum += 0.299 * data[iTop] + 0.587 * data[iTop + 1] + 0.114 * data[iTop + 2];
+        const iBottom = ((h - 1) * w + x) * 4;
+        bgLumaSum += 0.299 * data[iBottom] + 0.587 * data[iBottom + 1] + 0.114 * data[iBottom + 2];
+        bgCount += 2;
+      }
+      // Laterais Esquerda e Direita
+      for (let y = 0; y < h; y += step) {
+        const iLeft = (y * w + 0) * 4;
+        bgLumaSum += 0.299 * data[iLeft] + 0.587 * data[iLeft + 1] + 0.114 * data[iLeft + 2];
+        const iRight = (y * w + (w - 1)) * 4;
+        bgLumaSum += 0.299 * data[iRight] + 0.587 * data[iRight + 1] + 0.114 * data[iRight + 2];
+        bgCount += 2;
+      }
+
+      const avgPaperLuma = bgCount > 0 ? bgLumaSum / bgCount : 220;
+      // O limiar adapta-se à iluminação da foto:
+      // Se a folha estiver com sombra (luma 170), corta a partir de 145.
+      // Se for papel bem iluminado (luma 240), corta a partir de 205.
+      const threshold = Math.max(120, Math.min(235, options.threshold || (avgPaperLuma - 30)));
+      const darkThreshold = Math.max(50, threshold - 50);
+
       let minX = w;
       let minY = h;
       let maxX = 0;
       let maxY = 0;
       let hasInk = false;
 
-      // Percorrer pixels e remover fundo
+      // 3. Processamento de pixels
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
         const g = data[i + 1];
@@ -97,19 +125,21 @@ export const removeSignatureBackground = async (
         const x = (i / 4) % w;
         const y = Math.floor((i / 4) / w);
 
-        // Se o pixel é mais claro que o limiar do papel -> torna transparente
         if (luma >= threshold) {
-          data[i + 3] = 0; // Transparente
+          // Fundo de papel -> 100% Transparente
+          data[i + 3] = 0;
         } else {
-          // Pixel de traço de caneta
-          // Fator de intensidade do traço (quanto mais escuro, mais opaco)
-          const delta = threshold - luma;
-          const factor = Math.min(1, Math.max(0, delta / (threshold * 0.55)));
-          const alpha = Math.min(255, Math.max(30, Math.round(factor * 255)));
+          // Traço de caneta
+          let alpha = 255;
+          if (luma > darkThreshold) {
+            // Suavização anti-aliasing nos contornos do traço
+            const ratio = (threshold - luma) / (threshold - darkThreshold);
+            alpha = Math.min(255, Math.max(40, Math.round(ratio * 255)));
+          }
 
           data[i + 3] = alpha;
 
-          if (alpha > 40) {
+          if (alpha > 45) {
             hasInk = true;
             if (x < minX) minX = x;
             if (y < minY) minY = y;
@@ -118,33 +148,33 @@ export const removeSignatureBackground = async (
           }
 
           if (inkMode === 'BLUE') {
-            // Caneta Azul Canônica (tom formal eclesiástico/cartorial)
-            data[i] = 16;     // R
-            data[i + 1] = 68; // G
-            data[i + 2] = 158;// B
+            // Caneta Azul Canônica (tom eclesiástico oficial, nítido e profissional)
+            data[i] = 16;
+            data[i + 1] = 68;
+            data[i + 2] = 158;
           } else if (inkMode === 'BLACK') {
             // Caneta Preta Nanquim/Esferográfica
-            data[i] = 24;     // R
-            data[i + 1] = 26; // G
-            data[i + 2] = 32; // B
+            data[i] = 20;
+            data[i + 1] = 24;
+            data[i + 2] = 33;
           } else {
-            // Manter cor original, reforçando o contraste
-            data[i] = Math.max(0, r - 30);
-            data[i + 1] = Math.max(0, g - 30);
-            data[i + 2] = Math.max(0, b - 30);
+            // Manter cor original reforçando nitidez e contraste
+            data[i] = Math.max(0, r - 35);
+            data[i + 1] = Math.max(0, g - 35);
+            data[i + 2] = Math.max(0, b - 35);
           }
         }
       }
 
       ctx.putImageData(imgData, 0, 0);
 
-      // Recortar margens transparentes vazias (Auto-Trim)
+      // 4. Recorte automático das margens vazias ao redor da assinatura
       if (hasInk && maxX > minX && maxY > minY) {
         const pad = 12;
         const cropX = Math.max(0, minX - pad);
         const cropY = Math.max(0, minY - pad);
-        const cropW = Math.min(w - cropX, maxX - minX + pad * 2);
-        const cropH = Math.min(h - cropY, maxY - minY + pad * 2);
+        const cropW = Math.min(w - cropX, (maxX - minX) + pad * 2);
+        const cropH = Math.min(h - cropY, (maxY - minY) + pad * 2);
 
         const cropCanvas = document.createElement('canvas');
         cropCanvas.width = cropW;
@@ -168,3 +198,4 @@ export const removeSignatureBackground = async (
     img.src = src;
   });
 };
+

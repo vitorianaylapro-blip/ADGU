@@ -1,6 +1,11 @@
 import { jsPDF } from 'jspdf';
 import { DailyTransaction, FinancialReport, MiscItem, UserAccount } from '../types';
 
+export interface CongregationPastor {
+  pastorName: string;
+  pastorRole?: string;
+}
+
 export interface SystemSettings {
   institutionName?: string;
   cnpj?: string;
@@ -14,7 +19,64 @@ export interface SystemSettings {
   pastorName?: string;
   pastorRole?: string;
   president?: string;
+  congregationPastors?: Record<string, CongregationPastor>;
   [key: string]: any;
+}
+
+export const DEFAULT_CONGREGATIONS = [
+  'ADGU SEDE',
+  'ADGU CAMPOS BELOS',
+  'ADGU MUCUNA',
+  'ADGU NOVO ORIENTE',
+  'ADGU PRESIDENTE VARGAS',
+  'ADGU TAQUARA',
+  'CADEMI',
+  'DEPARTAMENTO FEMININO',
+  'UMEC'
+];
+
+export function getPastorForInstitution(
+  institutionName: string,
+  settings?: Partial<SystemSettings> | null
+): { pastorName: string; pastorRole: string } {
+  const norm = (institutionName || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  const pastorsMap = settings?.congregationPastors || {};
+
+  // Exact or normalized match
+  for (const [key, val] of Object.entries(pastorsMap)) {
+    const kNorm = (key || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    if (kNorm === norm && val?.pastorName) {
+      return {
+        pastorName: val.pastorName.trim(),
+        pastorRole: val.pastorRole?.trim() || 'Pastor Dirigente'
+      };
+    }
+  }
+
+  // Partial match
+  for (const [key, val] of Object.entries(pastorsMap)) {
+    const kNorm = (key || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    if ((norm.includes(kNorm) || kNorm.includes(norm)) && val?.pastorName) {
+      return {
+        pastorName: val.pastorName.trim(),
+        pastorRole: val.pastorRole?.trim() || 'Pastor Dirigente'
+      };
+    }
+  }
+
+  // Sede defaults to President
+  if (norm.includes('SEDE')) {
+    return {
+      pastorName: settings?.pastorName || settings?.president || 'Pr. Antônio Chaves Crus',
+      pastorRole: settings?.pastorRole || 'Pastor Presidente / Dirigente'
+    };
+  }
+
+  // Default fallback for other congregations
+  return {
+    pastorName: settings?.pastorName || settings?.president || 'Pr. Antônio Chaves Crus',
+    pastorRole: 'Pastor Dirigente'
+  };
 }
 
 export interface ConsolidatedLineItem {
@@ -677,13 +739,14 @@ export function formatNormalReportText(
   const dateFormatted = formatDateBR(rawDate) || 'N/D';
   const compFormatted = getCompetenceFromDate(rawDate) || data.dateLabel || 'GERAL';
 
+  const pastorInfo = getPastorForInstitution(data.institutionName, settings);
   const isMonthly = isReportExemptFromDiscount(data as any) || data.noDiscount;
   const lines: string[] = [
     instTitle,
     isMonthly ? 'RELATÓRIO FINANCEIRO MENSAL' : 'RELATÓRIO FINANCEIRO SEMANAL',
     `CONGREGAÇÃO / UNIDADE: ${data.institutionName.toUpperCase()}`,
     `CNPJ: ${cnpj}`,
-    `PR. PRESIDENTE: ${president}`,
+    `PASTOR DIRIGENTE: ${pastorInfo.pastorName}`,
     `TESOUREIRO / RESPONSÁVEL: ${data.reporterName.toUpperCase()}`,
     isMonthly ? `DATA DO RELATÓRIO (MENSAL): ${dateFormatted}` : `DATA DO RELATÓRIO (SEMANAL): ${dateFormatted}`,
     `COMPETÊNCIA: ${compFormatted}`,
@@ -942,6 +1005,14 @@ export const buildConsolidatedReportPDF = (
 
     const tName = settings?.treasurerName || 'TESOUREIRO RESPONSÁVEL';
     const tRole = settings?.treasurerRole || 'Tesouraria Geral';
+    const treasurerSig = settings?.treasurerSignature || (typeof localStorage !== 'undefined' ? localStorage.getItem('adgu_treasurer_signature') : null);
+    if (treasurerSig) {
+      try {
+        doc.addImage(treasurerSig, 'PNG', leftMargin + 20, signatureY - 14, 40, 13);
+      } catch (e) {
+        console.warn('Could not add treasurer signature to consolidated PDF:', e);
+      }
+    }
     doc.line(leftMargin + 5, signatureY, leftMargin + 75, signatureY);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
@@ -1176,6 +1247,14 @@ export const buildNormalReportPDF = (
 
     const tName = report.reporterName || settings?.treasurerName || 'TESOUREIRO RESPONSÁVEL';
     const tRole = settings?.treasurerRole || 'Tesoureiro Local';
+    const treasurerSig = settings?.treasurerSignature || (typeof localStorage !== 'undefined' ? localStorage.getItem('adgu_treasurer_signature') : null);
+    if (treasurerSig) {
+      try {
+        doc.addImage(treasurerSig, 'PNG', leftMargin + 20, signatureY - 14, 40, 13);
+      } catch (e) {
+        console.warn('Could not add treasurer signature to normal PDF:', e);
+      }
+    }
     doc.line(leftMargin + 5, signatureY, leftMargin + 75, signatureY);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
@@ -1186,8 +1265,9 @@ export const buildNormalReportPDF = (
     doc.setTextColor(100, 116, 139);
     doc.text(tRole, leftMargin + 40, signatureY + 7.8, { align: 'center' });
 
-    const pName = president;
-    const pRole = settings?.pastorRole || 'Pastor Dirigente / Presidente';
+    const pastorInfo = getPastorForInstitution(report.institutionName, settings);
+    const pName = pastorInfo.pastorName;
+    const pRole = pastorInfo.pastorRole;
     doc.line(pageWidth - rightMargin - 75, signatureY, pageWidth - rightMargin - 5, signatureY);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);

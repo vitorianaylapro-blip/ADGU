@@ -1,6 +1,11 @@
 import { FinancialReport, UserAccount, DailyTransaction, ReceiptRecord } from '../types';
 import { sql } from './neonClient';
 
+export interface CongregationPastorSetting {
+  pastorName: string;
+  pastorRole?: string;
+}
+
 export interface SystemSettings {
   logo?: string;
   institutionName: string;
@@ -17,6 +22,7 @@ export interface SystemSettings {
   pastorCpf?: string;
   pastorSignature?: string; // Base64 transparent PNG
   closingDay: number;
+  congregationPastors?: Record<string, CongregationPastorSetting>;
 }
 
 const notifyUpdate = (event: string) => {
@@ -499,16 +505,20 @@ export const getSettings = async (): Promise<SystemSettings> => {
         treasurerName: r.treasurername || 'Tesoureiro Local',
         treasurerRole: r.treasurerrole || 'Tesoureiro Responsável',
         treasurerCpf: r.treasurercpf || '',
-        treasurerSignature: r.treasurersignature || '',
+        treasurerSignature: r.treasurersignature || localStorage.getItem('adgu_treasurer_signature') || '',
         pastorName: r.pastorname || 'Pr. Antônio Chaves Crus',
         pastorRole: r.pastorrole || 'Pastor Presidente / Dirigente',
         pastorCpf: r.pastorcpf || '',
         pastorSignature: r.pastorsignature || '',
         closingDay: Number(r.closingday) || 1,
-        logo: r.logo || ''
+        logo: r.logo || '',
+        congregationPastors: r.congregationpastors || {}
       };
       try {
         localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sData));
+        if (sData.treasurerSignature) {
+          localStorage.setItem('adgu_treasurer_signature', sData.treasurerSignature);
+        }
       } catch {}
       return sData;
     }
@@ -518,6 +528,7 @@ export const getSettings = async (): Promise<SystemSettings> => {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (data) {
       const parsed = JSON.parse(data);
+      const cachedSig = parsed.treasurerSignature || localStorage.getItem('adgu_treasurer_signature') || '';
       return {
         institutionName: 'Assembleia de Deus Geração Unida',
         cnpj: '49.386.673/0001-10',
@@ -527,17 +538,19 @@ export const getSettings = async (): Promise<SystemSettings> => {
         treasurerName: 'Tesoureiro Local',
         treasurerRole: 'Tesoureiro Responsável',
         treasurerCpf: '',
-        treasurerSignature: '',
         pastorName: 'Pr. Antônio Chaves Crus',
         pastorRole: 'Pastor Presidente / Dirigente',
         pastorCpf: '',
         pastorSignature: '',
         closingDay: 1,
-        ...parsed
+        congregationPastors: {},
+        ...parsed,
+        treasurerSignature: cachedSig || parsed.treasurerSignature || ''
       };
     }
   } catch {}
 
+  const defaultSig = localStorage.getItem('adgu_treasurer_signature') || '';
   return {
     institutionName: 'Assembleia de Deus Geração Unida',
     cnpj: '49.386.673/0001-10',
@@ -547,12 +560,13 @@ export const getSettings = async (): Promise<SystemSettings> => {
     treasurerName: 'Tesoureiro Local',
     treasurerRole: 'Tesoureiro Responsável',
     treasurerCpf: '',
-    treasurerSignature: '',
+    treasurerSignature: defaultSig,
     pastorName: 'Pr. Antônio Chaves Crus',
     pastorRole: 'Pastor Presidente / Dirigente',
     pastorCpf: '',
     pastorSignature: '',
-    closingDay: 1
+    closingDay: 1,
+    congregationPastors: {}
   };
 };
 
@@ -569,8 +583,8 @@ export const saveSettings = async (settings: SystemSettings) => {
   if (!savedRemotely) {
     try {
       await sql`
-        INSERT INTO settings (id, institutionname, cnpj, address, email, president, treasurername, treasurerrole, pastorname, pastorrole, closingday, logo)
-        VALUES (1, ${settings.institutionName}, ${settings.cnpj}, ${settings.address}, ${settings.email}, ${settings.president}, ${settings.treasurerName || ''}, ${settings.treasurerRole || ''}, ${settings.pastorName || ''}, ${settings.pastorRole || ''}, ${settings.closingDay || 1}, ${settings.logo || ''})
+        INSERT INTO settings (id, institutionname, cnpj, address, email, president, treasurername, treasurerrole, treasurersignature, pastorname, pastorrole, closingday, logo, congregationpastors)
+        VALUES (1, ${settings.institutionName}, ${settings.cnpj}, ${settings.address}, ${settings.email}, ${settings.president}, ${settings.treasurerName || ''}, ${settings.treasurerRole || ''}, ${settings.treasurerSignature || ''}, ${settings.pastorName || ''}, ${settings.pastorRole || ''}, ${settings.closingDay || 1}, ${settings.logo || ''}, ${JSON.stringify(settings.congregationPastors || {})})
         ON CONFLICT (id) DO UPDATE SET
           institutionname = EXCLUDED.institutionname,
           cnpj = EXCLUDED.cnpj,
@@ -579,10 +593,12 @@ export const saveSettings = async (settings: SystemSettings) => {
           president = EXCLUDED.president,
           treasurername = EXCLUDED.treasurername,
           treasurerrole = EXCLUDED.treasurerrole,
+          treasurersignature = EXCLUDED.treasurersignature,
           pastorname = EXCLUDED.pastorname,
           pastorrole = EXCLUDED.pastorrole,
           closingday = EXCLUDED.closingday,
-          logo = EXCLUDED.logo
+          logo = EXCLUDED.logo,
+          congregationpastors = EXCLUDED.congregationpastors
       `;
     } catch (directErr) {
       console.warn("Direct Neon saveSettings error:", directErr);
@@ -591,6 +607,9 @@ export const saveSettings = async (settings: SystemSettings) => {
 
   try {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    if (settings.treasurerSignature) {
+      localStorage.setItem('adgu_treasurer_signature', settings.treasurerSignature);
+    }
     notifyUpdate('settings-updated');
   } catch (e) {
     console.error("Erro ao salvar configurações:", e);

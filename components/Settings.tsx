@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { getSettings, saveSettings, SystemSettings, getDatabaseStatus, syncAllLocalDataToDatabase, seedSampleDataToDatabase } from '../services/storageService';
+import { removeSignatureBackground } from '../services/signatureService';
 import { getGoogleClientId, saveGoogleClientId } from '../services/googleDriveService';
-import { Camera, Save, Loader2, CheckCircle, Building2, User, Mail, MapPin, Hash, Clock, Link, Cloud, ExternalLink, Database, Server, Check, RefreshCw, UploadCloud, Sparkles, Download } from 'lucide-react';
+import { Camera, Save, Loader2, CheckCircle, Building2, User, Mail, MapPin, Hash, Clock, Link, Cloud, ExternalLink, Database, Server, Check, RefreshCw, UploadCloud, Sparkles, Download, Users, Plus, Trash2 } from 'lucide-react';
 
 export const Settings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings>({
@@ -80,38 +81,84 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'treasurerSignature' | 'pastorSignature') => {
+  const [newCongName, setNewCongName] = useState('');
+
+  const defaultCongregations = [
+    'ADGU SEDE',
+    'ADGU CAMPOS BELOS',
+    'ADGU MUCUNA',
+    'ADGU NOVO ORIENTE',
+    'ADGU PRESIDENTE VARGAS',
+    'ADGU TAQUARA',
+    'CADEMI',
+    'DEPARTAMENTO FEMININO',
+    'UMEC'
+  ];
+
+  const allCongregations = Array.from(
+    new Set([
+      ...defaultCongregations,
+      ...Object.keys(settings.congregationPastors || {})
+    ])
+  );
+
+  const handlePastorChange = (congName: string, field: 'pastorName' | 'pastorRole', val: string) => {
+    const currentPastors = settings.congregationPastors || {};
+    const existing = currentPastors[congName] || {
+      pastorName: congName.toUpperCase().includes('SEDE') ? (settings.pastorName || settings.president || 'Pr. Antônio Chaves Crus') : '',
+      pastorRole: congName.toUpperCase().includes('SEDE') ? 'Pastor Presidente' : 'Pastor Dirigente'
+    };
+    setSettings({
+      ...settings,
+      congregationPastors: {
+        ...currentPastors,
+        [congName]: {
+          ...existing,
+          [field]: val
+        }
+      }
+    });
+  };
+
+  const handleAddCustomCongregation = () => {
+    const trimmed = newCongName.trim().toUpperCase();
+    if (!trimmed) return;
+    const currentPastors = settings.congregationPastors || {};
+    setSettings({
+      ...settings,
+      congregationPastors: {
+        ...currentPastors,
+        [trimmed]: currentPastors[trimmed] || {
+          pastorName: '',
+          pastorRole: 'Pastor Dirigente'
+        }
+      }
+    });
+    setNewCongName('');
+  };
+
+  const handleRemoveCustomCongregation = (congName: string) => {
+    const currentPastors = { ...(settings.congregationPastors || {}) };
+    delete currentPastors[congName];
+    setSettings({
+      ...settings,
+      congregationPastors: currentPastors
+    });
+  };
+
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'treasurerSignature' | 'pastorSignature') => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            // Simple threshold: treat light pixels as transparent
-            for (let i = 0; i < data.length; i += 4) {
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-              // Assuming signature is dark, white-ish background
-              if (r > 200 && g > 200 && b > 200) {
-                data[i + 3] = 0; // Set alpha to transparent
-              }
-            }
-            ctx.putImageData(imageData, 0, 0);
-            setSettings({ ...settings, [field]: canvas.toDataURL('image/png') });
-          }
-        };
-        img.src = event.target?.result as string;
-      };
-      reader.readAsDataURL(file);
+      try {
+        const cleanSig = await removeSignatureBackground(file, { inkMode: 'BLUE' });
+        const updated = { ...settings, [field]: cleanSig };
+        setSettings(updated);
+        if (field === 'treasurerSignature') {
+          localStorage.setItem('adgu_treasurer_signature', cleanSig);
+        }
+      } catch (err) {
+        console.error("Erro ao processar foto da assinatura:", err);
+      }
     }
   };
 
@@ -120,9 +167,12 @@ export const Settings: React.FC = () => {
     setIsSaving(true);
     try {
       await saveSettings(settings);
+      if (settings.treasurerSignature) {
+        localStorage.setItem('adgu_treasurer_signature', settings.treasurerSignature);
+      }
       saveGoogleClientId(googleClientId.trim());
-      setSuccessMessage("Configurações salvas!");
-      setTimeout(() => setSuccessMessage(null), 3000);
+      setSuccessMessage("Configurações e Pastores Dirigentes salvos com sucesso!");
+      setTimeout(() => setSuccessMessage(null), 3500);
     } catch (err) {
       setSuccessMessage("Erro ao salvar configurações.");
       setTimeout(() => setSuccessMessage(null), 3000);
@@ -284,6 +334,103 @@ export const Settings: React.FC = () => {
                 <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                 <input type="text" value={settings.address} onChange={e => setSettings({...settings, address: e.target.value})} className="w-full pl-11 pr-4 py-4 bg-slate-50 rounded-2xl font-bold text-xs border border-transparent focus:border-indigo-100 outline-none transition-all" />
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Pastores Dirigentes das Congregações Card */}
+        <div className="bg-white rounded-[2.5rem] p-8 md:p-12 shadow-soft border border-slate-50 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-indigo-50 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                <Users size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Pastores Dirigentes das Congregações</h3>
+                <p className="text-[7px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Configure o Pastor Dirigente de cada congregação para relatórios e recibos</p>
+              </div>
+            </div>
+            <span className="text-[8px] font-black uppercase tracking-wider bg-blue-50 text-[#1d4ed8] px-3 py-1.5 rounded-xl border border-blue-100 self-start sm:self-auto">
+              {allCongregations.length} Unidades
+            </span>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-[9px] text-slate-500 font-medium leading-relaxed">
+              Cada congregação possui seu próprio Pastor Dirigente. Os dados informados abaixo são aplicados automaticamente na assinatura dos relatórios e recibos oficiais de cada congregação.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              {allCongregations.map((cong) => {
+                const isSede = cong.toUpperCase().includes('SEDE');
+                const pastorData = settings.congregationPastors?.[cong] || {
+                  pastorName: isSede ? (settings.pastorName || settings.president || 'Pr. Antônio Chaves Crus') : '',
+                  pastorRole: isSede ? (settings.pastorRole || 'Pastor Presidente') : 'Pastor Dirigente'
+                };
+                const isCustom = !defaultCongregations.includes(cong);
+
+                return (
+                  <div key={cong} className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3 relative group hover:border-indigo-200 transition-all">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${isSede ? 'bg-amber-500' : 'bg-indigo-600'}`} />
+                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{cong}</span>
+                      </div>
+                      {isCustom && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomCongregation(cong)}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded-lg transition-colors"
+                          title="Remover Congregação Personalizada"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[7.5px] font-bold text-slate-500 uppercase tracking-wider block">Nome do Pastor Dirigente</label>
+                        <input
+                          type="text"
+                          value={pastorData.pastorName}
+                          onChange={(e) => handlePastorChange(cong, 'pastorName', e.target.value)}
+                          placeholder={isSede ? 'Pr. Antônio Chaves Crus' : 'Nome do Pastor'}
+                          className="w-full px-3 py-2 bg-white rounded-xl text-xs font-bold text-slate-800 border border-slate-200 focus:border-indigo-300 outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[7.5px] font-bold text-slate-500 uppercase tracking-wider block">Cargo Oficial</label>
+                        <input
+                          type="text"
+                          value={pastorData.pastorRole || (isSede ? 'Pastor Presidente' : 'Pastor Dirigente')}
+                          onChange={(e) => handlePastorChange(cong, 'pastorRole', e.target.value)}
+                          placeholder="Pastor Dirigente"
+                          className="w-full px-3 py-2 bg-white rounded-xl text-[11px] font-medium text-slate-700 border border-slate-200 focus:border-indigo-300 outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Adicionar Outra Congregação */}
+            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <input
+                type="text"
+                value={newCongName}
+                onChange={(e) => setNewCongName(e.target.value)}
+                placeholder="Nome de nova congregação (Ex: ADGU OUTRA)"
+                className="flex-1 px-4 py-3 bg-slate-50 rounded-2xl text-xs font-bold border border-slate-200 focus:border-indigo-300 outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleAddCustomCongregation}
+                className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-sm"
+              >
+                <Plus size={14} /> Adicionar Congregação
+              </button>
             </div>
           </div>
         </div>

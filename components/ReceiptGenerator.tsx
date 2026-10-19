@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { UserSession, ReceiptRecord } from '../types';
 import { getReceipts, saveReceipt, deleteReceipt, getSettings, saveSettings, SystemSettings, saveUser, getUsers } from '../services/storageService';
 import { valorPorExtenso } from '../services/extensoService';
+import { removeSignatureBackground } from '../services/signatureService';
+import { getPastorForInstitution } from '../services/reportPdfService';
 import { jsPDF } from 'jspdf';
 import { 
   Receipt, Plus, Search, Printer, Trash2, CheckCircle2, FileText, User, Building, 
@@ -44,9 +46,8 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
   const [pastorRole, setPastorRole] = useState<string>('Pastor Presidente / Dirigente');
   const [institutionName, setInstitutionName] = useState<string>(session.institution);
   
-  // Signature layout: DUAL (both with GOV.BR size) or SINGLE (pastor/treasurer)
+  // Signature layout: DUAL or SINGLE (pastor/treasurer)
   const [signatureLayout, setSignatureLayout] = useState<'DUAL' | 'SINGLE_PASTOR' | 'SINGLE_TREASURER'>('DUAL');
-  const [showGovHelp, setShowGovHelp] = useState(false);
   
   // Settings copy for quick config
   const [churchSettings, setChurchSettings] = useState<SystemSettings | null>(null);
@@ -136,17 +137,10 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
         setTreasurerRole('Tesoureiro Geral');
       }
 
-      if (settings.pastorName || settings.president) {
-        setPastorName(settings.pastorName || settings.president);
-      } else {
-        setPastorName('Pr. Antônio Chaves Crus');
-      }
-
-      if (settings.pastorRole) {
-        setPastorRole(settings.pastorRole);
-      } else {
-        setPastorRole('Pastor Presidente / Dirigente');
-      }
+      const activeInst = institutionName || session.institution || 'SEDE';
+      const pastorInfo = getPastorForInstitution(activeInst, settings);
+      setPastorName(pastorInfo.pastorName);
+      setPastorRole(pastorInfo.pastorRole);
 
       if (settings.address && settings.address.includes('Maracanaú')) {
         setCity('Maracanaú - CE');
@@ -155,6 +149,15 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
       console.error("Erro ao inicializar configurações padrão do recibo:", e);
     }
   };
+
+  // Atualizar automaticamente o Pastor Dirigente ao mudar de congregação
+  useEffect(() => {
+    if (churchSettings && institutionName) {
+      const pastorInfo = getPastorForInstitution(institutionName, churchSettings);
+      setPastorName(pastorInfo.pastorName);
+      setPastorRole(pastorInfo.pastorRole);
+    }
+  }, [institutionName, churchSettings]);
 
   const parseVal = (str: string): number => {
     if (!str) return 0;
@@ -167,44 +170,72 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
   };
 
-  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && currentUser) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            // Simple threshold: treat light pixels as transparent
-            for (let i = 0; i < data.length; i += 4) {
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-              // Assuming signature is dark, white-ish background
-              if (r > 200 && g > 200 && b > 200) {
-                data[i + 3] = 0; // Set alpha to transparent
-              }
-            }
-            ctx.putImageData(imageData, 0, 0);
-            const signatureData = canvas.toDataURL('image/png');
-            const updatedUser = { ...currentUser, signature: signatureData, signatureType: 'UPLOADED' };
-            setCurrentUser(updatedUser);
-            saveUser(updatedUser.id, updatedUser);
-            setSuccessMsg("Assinatura salva com sucesso!");
-            setTimeout(() => setSuccessMsg(null), 3500);
-          }
-        };
-        img.src = event.target?.result as string;
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    try {
+      setSaving(true);
+      // Remove o fundo da folha automaticamente deixando apenas o traço da assinatura nítido
+      const cleanSig = await removeSignatureBackground(file, { inkMode: 'BLUE' });
+
+      // Salva no localStorage para disponibilidade instantânea
+      localStorage.setItem('adgu_treasurer_signature', cleanSig);
+
+      // Atualiza usuário atual
+      if (currentUser) {
+        const updatedUser = { ...currentUser, signature: cleanSig, signatureType: 'UPLOADED' as const };
+        setCurrentUser(updatedUser);
+        try { await saveUser(updatedUser); } catch {}
+      } else {
+        setCurrentUser({
+          id: session.id,
+          username: session.name || 'tesoureiro',
+          password: '',
+          name: session.name || 'Tesoureiro',
+          role: session.role,
+          institution: session.institution,
+          active: true,
+          signature: cleanSig,
+          signatureType: 'UPLOADED'
+        });
+      }
+
+      // Atualiza configurações da igreja (para refletir em recibos e relatórios)
+      try {
+        const current = await getSettings();
+        const updatedSettings: SystemSettings = { ...current, treasurerSignature: cleanSig };
+        setChurchSettings(updatedSettings);
+        await saveSettings(updatedSettings);
+      } catch (err) {
+        console.warn("Aviso ao salvar configurações da igreja com assinatura:", err);
+      }
+
+      setSuccessMsg("Assinatura salva com sucesso! O fundo foi removido automaticamente.");
+      setTimeout(() => setSuccessMsg(null), 3500);
+    } catch (err) {
+      console.error("Erro ao processar assinatura:", err);
+      showError("Erro ao processar a foto da assinatura.");
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleSignatureRemove = async () => {
+    localStorage.removeItem('adgu_treasurer_signature');
+    if (currentUser) {
+      const updatedUser = { ...currentUser, signature: '' };
+      setCurrentUser(updatedUser);
+      try { await saveUser(updatedUser); } catch {}
+    } else {
+      setCurrentUser(null);
+    }
+    if (churchSettings) {
+      const updatedSettings = { ...churchSettings, treasurerSignature: '' };
+      setChurchSettings(updatedSettings);
+      try { await saveSettings(updatedSettings); } catch {}
+    }
+    setSuccessMsg("Assinatura removida.");
+    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
   const totalCalculated = type === 'RECEITA' 
@@ -218,16 +249,19 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
     setSavingSettings(true);
     try {
       const current = await getSettings();
+      const currentSig = churchSettings?.treasurerSignature || current.treasurerSignature || currentUser?.signature || localStorage.getItem('adgu_treasurer_signature') || '';
       const updated: SystemSettings = {
         ...current,
         treasurerName: treasurerName.trim(),
         treasurerRole: treasurerRole.trim(),
+        treasurerSignature: currentSig,
         pastorName: pastorName.trim(),
         pastorRole: pastorRole.trim(),
         president: pastorName.trim(),
         institutionName: churchSettings?.institutionName || current.institutionName,
         cnpj: churchSettings?.cnpj || current.cnpj,
-        address: churchSettings?.address || current.address
+        address: churchSettings?.address || current.address,
+        congregationPastors: current.congregationPastors
       };
       await saveSettings(updated);
       setChurchSettings(updated);
@@ -309,8 +343,8 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
         city: city.trim() || 'Maracanaú - CE',
         treasurerName: treasurerName.trim() || session.name,
         treasurerRole: treasurerRole.trim() || 'Tesoureiro Geral',
-        treasurerSignature: currentUser?.signature,
-        treasurerSignatureType: currentUser?.signatureType,
+        treasurerSignature: currentUser?.signature || churchSettings?.treasurerSignature || (typeof localStorage !== 'undefined' ? localStorage.getItem('adgu_treasurer_signature') : null) || undefined,
+        treasurerSignatureType: 'UPLOADED',
         pastorName: pastorName.trim() || 'Pr. Antônio Chaves Crus',
         pastorRole: pastorRole.trim() || 'Pastor Presidente / Dirigente',
         institutionName: institutionName.trim() || session.institution,
@@ -1689,6 +1723,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
     const formattedDate = new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
     const isLarge = size === 'LARGE';
     const isCompact = size === 'COMPACT';
+    const sigImg = rec.treasurerSignature || currentUser?.signature || churchSettings?.treasurerSignature || (typeof localStorage !== 'undefined' ? localStorage.getItem('adgu_treasurer_signature') : null);
 
     return (
       <div className={`border-2 border-slate-300 rounded-2xl bg-white relative overflow-hidden ${isLarge ? 'p-6 sm:p-8 space-y-5 shadow-sm' : isCompact ? 'p-3 space-y-2' : 'p-4 sm:p-5 space-y-3.5'}`}>
@@ -1819,8 +1854,8 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                 {signatureLayout === 'SINGLE_TREASURER' ? 'TESOURARIA GERAL' : 'DIRETORIA / DIRIGENTE RESPONSÁVEL'}
               </span>
               <div className={`flex items-center justify-center ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`}>
-                {rec.treasurerSignature ? (
-                  <img src={rec.treasurerSignature} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
+                {sigImg ? (
+                  <img src={sigImg} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
                 ) : null}
               </div>
               <div className="w-4/5 mx-auto border-b-2 border-slate-700 mb-1" />
@@ -1837,8 +1872,8 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
             <div className={`bg-white rounded-2xl border-2 border-slate-200 flex flex-col justify-between ${isLarge ? 'p-3.5 min-h-[160px]' : isCompact ? 'p-1.5 min-h-[80px]' : 'p-2.5 min-h-[120px]'}`}>
               <span className="text-[8px] font-black text-teal-800 uppercase tracking-wider block">TESOURARIA GERAL</span>
               <div className={`flex items-center justify-center ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`}>
-                {rec.treasurerSignature ? (
-                  <img src={rec.treasurerSignature} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
+                {sigImg ? (
+                  <img src={sigImg} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
                 ) : null}
               </div>
               <div className="w-full border-b border-slate-500 mb-1" />
@@ -2273,17 +2308,9 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                   <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                     <FileText size={16} className="text-teal-600" /> Assinaturas e Responsáveis
                   </h3>
-                  <p className="text-[10px] text-slate-400">Espaço em branco reservado com tamanho ideal para assinatura digital GOV.BR ou manual</p>
+                  <p className="text-[10px] text-slate-400">Espaço oficial para assinatura digitalizada ou manual</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowGovHelp(true)}
-                    className="text-[10px] font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
-                    title="Ver como assinar digitalmente no GOV.BR"
-                  >
-                    Como Assinar no GOV.BR?
-                  </button>
                   <button
                     type="button"
                     onClick={() => setActiveTab('SETTINGS')}
@@ -2748,33 +2775,35 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
             <div className="sm:col-span-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4">
               <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider block">Minha Assinatura Digital</label>
               
-              <div className="flex items-center gap-4">
-                <div className="w-32 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden">
-                  {currentUser?.signature ? (
-                    <img src={currentUser.signature} className="max-h-full object-contain" alt="Assinatura" />
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="w-40 h-20 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden p-1 shadow-sm">
+                  {currentUser?.signature || churchSettings?.treasurerSignature || (typeof localStorage !== 'undefined' && localStorage.getItem('adgu_treasurer_signature')) ? (
+                    <img 
+                      src={currentUser?.signature || churchSettings?.treasurerSignature || (localStorage.getItem('adgu_treasurer_signature') || '')} 
+                      className="max-h-full object-contain" 
+                      alt="Assinatura" 
+                    />
                   ) : (
-                    <span className="text-[8px] text-slate-400">Sem assinatura</span>
+                    <span className="text-[9px] text-slate-400 font-bold">Sem assinatura</span>
                   )}
                 </div>
-                <label className="px-4 py-2 bg-teal-600 text-white rounded-xl text-[10px] font-black cursor-pointer hover:bg-teal-700 transition-all">
-                  Upload Assinatura
-                  <input type="file" className="hidden" accept="image/*" onChange={handleSignatureUpload} />
-                </label>
-                {currentUser?.signature && (
-                  <button 
-                    type="button" 
-                    onClick={() => {
-                      const updatedUser = {...currentUser, signature: ''};
-                      setCurrentUser(updatedUser);
-                      saveUser(updatedUser.id, updatedUser);
-                    }}
-                    className="px-3 py-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-[10px] font-black transition-all"
-                  >
-                    Remover
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  <label className="px-4 py-2.5 bg-teal-600 text-white rounded-xl text-[10px] font-black cursor-pointer hover:bg-teal-700 transition-all flex items-center gap-1.5 shadow-sm">
+                    <FileText size={14} /> Anexar Foto da Assinatura
+                    <input type="file" className="hidden" accept="image/*" onChange={handleSignatureUpload} />
+                  </label>
+                  {(currentUser?.signature || churchSettings?.treasurerSignature || (typeof localStorage !== 'undefined' && localStorage.getItem('adgu_treasurer_signature'))) && (
+                    <button 
+                      type="button" 
+                      onClick={handleSignatureRemove}
+                      className="px-3 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-[10px] font-black transition-all"
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
               </div>
-              <p className="text-[8px] text-slate-400 italic">O sistema removerá o fundo automaticamente das imagens.</p>
+              <p className="text-[9px] text-slate-500 font-medium">Basta tirar uma foto da sua assinatura no papel. O sistema remove o fundo da foto automaticamente e deixa apenas a assinatura nítida para recibos e relatórios.</p>
             </div>
 
             <div className="sm:col-span-2 space-y-1">
@@ -2806,76 +2835,6 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
             </button>
           </div>
         </form>
-      )}
-
-      {/* MODAL GUIA PASSO A PASSO ASSINATURA GOV.BR */}
-      {showGovHelp && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-teal-100 text-teal-800 rounded-2xl flex items-center justify-center">
-                  <ShieldCheck size={28} />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Como Assinar com o GOV.BR</h3>
-                  <p className="text-xs text-slate-500">Validade jurídica nacional gratuita (Lei 14.063/2020)</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowGovHelp(false)}
-                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="space-y-3.5 text-xs text-slate-600">
-              <div className="flex items-start gap-3 p-3 bg-teal-50/60 border border-teal-100 rounded-2xl">
-                <span className="w-6 h-6 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 text-xs">1</span>
-                <div>
-                  <strong className="text-slate-900 block">Baixe o PDF do Recibo</strong>
-                  Clique no botão <strong>"Baixar A4 (2 Vias)"</strong> ou <strong>"Baixar A5"</strong> aqui no app.
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-3 bg-teal-50/60 border border-teal-100 rounded-2xl">
-                <span className="w-6 h-6 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 text-xs">2</span>
-                <div>
-                  <strong className="text-slate-900 block">Acesse o Assinador Oficial GOV.BR</strong>
-                  Entre no portal oficial: <span className="font-mono text-teal-800 font-bold">assinador.iti.br</span> ou abra o aplicativo <strong>GOV.BR</strong> no celular.
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-3 bg-teal-50/60 border border-teal-100 rounded-2xl">
-                <span className="w-6 h-6 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 text-xs">3</span>
-                <div>
-                  <strong className="text-slate-900 block">Posicione o Carimbo no Espaço em Branco</strong>
-                  O recibo possui uma área em branco ampla e limpa (~80 × 24 mm). Basta arrastar o carimbo oficial do GOV.BR para o espaço em branco acima do nome e da linha do responsável.
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-3 bg-teal-50/60 border border-teal-100 rounded-2xl">
-                <span className="w-6 h-6 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center shrink-0 text-xs">4</span>
-                <div>
-                  <strong className="text-slate-900 block">Conclua e Baixe o Documento Assinado</strong>
-                  Confirme a assinatura pelo código SMS ou app GOV.BR. O documento terá selo de autenticidade ICP-Brasil e validade jurídica para prestação de contas!
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowGovHelp(false)}
-                className="w-full py-3 bg-[#1d4ed8] hover:bg-blue-800 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all"
-              >
-                Entendi, Fechar Guia
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* MODAL OFICIAL DO OLHINHO: VISUALIZAÇÃO AMPLIADA DO RECIBO, IMPRESSÃO A4 LIMPA E WHATSAPP */}

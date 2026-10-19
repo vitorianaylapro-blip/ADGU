@@ -55,7 +55,7 @@ const App: React.FC = () => {
     
     if (userLower === 'adm' && passRaw === 'adm') {
       setSession({
-        id: 'admin-master',
+        id: 'e8c75dd0-0000-4000-a000-000000000000',
         name: 'Administrador Geral',
         role: 'ADMIN',
         institution: 'Sede Administrativa'
