@@ -164,6 +164,7 @@ function mapUserFromDb(u: any): UserAccount {
     phone: u.phone || '',
     photo: u.photo || '',
     signature: u.signature || '',
+    signatureType: u.signature_type || 'UPLOADED',
     role: u.role,
     institution: u.institution,
     active: !!u.active,
@@ -391,11 +392,11 @@ export const saveUser = async (user: Partial<UserAccount>) => {
     try {
       const pwd = user.password || '123456';
       await sql`
-        INSERT INTO users (id, username, password, name, email, phone, photo, signature, role, institution, active, nodiscount)
-        VALUES (${id}, ${user.username || ''}, ${pwd}, ${user.name || ''}, ${user.email || ''}, ${user.phone || ''}, ${user.photo || ''}, ${user.signature || ''}, ${finalRole}, ${user.institution || ''}, ${user.active ?? true}, ${isDeptTreasurer})
+        INSERT INTO users (id, username, password, name, email, phone, photo, signature, signature_type, role, institution, active, nodiscount)
+        VALUES (${id}, ${user.username || ''}, ${pwd}, ${user.name || ''}, ${user.email || ''}, ${user.phone || ''}, ${user.photo || ''}, ${user.signature || ''}, ${user.signatureType || 'UPLOADED'}, ${finalRole}, ${user.institution || ''}, ${user.active ?? true}, ${isDeptTreasurer})
         ON CONFLICT (username) DO UPDATE SET
           name = EXCLUDED.name, email = EXCLUDED.email, phone = EXCLUDED.phone,
-          photo = EXCLUDED.photo, signature = EXCLUDED.signature, role = EXCLUDED.role, institution = EXCLUDED.institution,
+          photo = EXCLUDED.photo, signature = EXCLUDED.signature, signature_type = EXCLUDED.signature_type, role = EXCLUDED.role, institution = EXCLUDED.institution,
           active = EXCLUDED.active, nodiscount = EXCLUDED.nodiscount
       `;
     } catch (directErr) {
@@ -417,6 +418,7 @@ export const saveUser = async (user: Partial<UserAccount>) => {
     phone: user.phone || '',
     photo: user.photo || '',
     signature: user.signature || '',
+    signatureType: user.signatureType || 'UPLOADED',
     role: finalRole,
     institution: user.institution || '',
     active: user.active ?? true,

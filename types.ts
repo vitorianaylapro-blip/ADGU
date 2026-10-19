@@ -93,6 +93,7 @@ export interface ReceiptRecord {
   treasurerRole?: string;
   treasurerCpf?: string;
   treasurerSignature?: string; // Base64 transparent PNG
+  treasurerSignatureType?: 'UPLOADED' | 'GOV_BR';
   pastorName: string;
   pastorRole?: string;
   pastorCpf?: string;
@@ -115,6 +116,7 @@ export interface UserAccount {
   phone?: string;
   photo?: string;
   signature?: string;
+  signatureType?: 'UPLOADED' | 'GOV_BR';
   role: UserRole;
   institution: string;
   active: boolean;

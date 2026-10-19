@@ -194,7 +194,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
             }
             ctx.putImageData(imageData, 0, 0);
             const signatureData = canvas.toDataURL('image/png');
-            const updatedUser = { ...currentUser, signature: signatureData };
+            const updatedUser = { ...currentUser, signature: signatureData, signatureType: 'UPLOADED' };
             setCurrentUser(updatedUser);
             saveUser(updatedUser.id, updatedUser);
             setSuccessMsg("Assinatura salva com sucesso!");
@@ -309,6 +309,8 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
         city: city.trim() || 'Maracanaú - CE',
         treasurerName: treasurerName.trim() || session.name,
         treasurerRole: treasurerRole.trim() || 'Tesoureiro Geral',
+        treasurerSignature: currentUser?.signature,
+        treasurerSignatureType: currentUser?.signatureType,
         pastorName: pastorName.trim() || 'Pr. Antônio Chaves Crus',
         pastorRole: pastorRole.trim() || 'Pastor Presidente / Dirigente',
         institutionName: institutionName.trim() || session.institution,
@@ -1817,7 +1819,9 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                 {signatureLayout === 'SINGLE_TREASURER' ? 'TESOURARIA GERAL' : 'DIRETORIA / DIRIGENTE RESPONSÁVEL'}
               </span>
               <div className={`flex items-center justify-center ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`}>
-                {signatureLayout === 'SINGLE_TREASURER' && rec.treasurerSignature ? (
+                {rec.treasurerSignatureType === 'GOV_BR' ? (
+                  <span className="text-[10px] text-slate-400 italic">Assinado GOV.BR</span>
+                ) : rec.treasurerSignature ? (
                   <img src={rec.treasurerSignature} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
                 ) : null}
               </div>
@@ -1835,7 +1839,9 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
             <div className={`bg-white rounded-2xl border-2 border-slate-200 flex flex-col justify-between ${isLarge ? 'p-3.5 min-h-[160px]' : isCompact ? 'p-1.5 min-h-[80px]' : 'p-2.5 min-h-[120px]'}`}>
               <span className="text-[8px] font-black text-teal-800 uppercase tracking-wider block">TESOURARIA GERAL</span>
               <div className={`flex items-center justify-center ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`}>
-                {rec.treasurerSignature ? (
+                {rec.treasurerSignatureType === 'GOV_BR' ? (
+                  <span className="text-[10px] text-slate-400 italic">Assinado GOV.BR</span>
+                ) : rec.treasurerSignature ? (
                   <img src={rec.treasurerSignature} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
                 ) : null}
               </div>
@@ -2743,21 +2749,46 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
             </div>
 
             {/* Signature Upload */}
-            <div className="sm:col-span-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-              <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider block mb-3">Minha Assinatura Digital (Aparecerá nos recibos)</label>
-              <div className="flex items-center gap-4">
-                <div className="w-32 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden">
-                  {currentUser?.signature ? (
-                    <img src={currentUser.signature} className="max-h-full object-contain" alt="Assinatura" />
-                  ) : (
-                    <span className="text-[8px] text-slate-400">Sem assinatura</span>
-                  )}
-                </div>
-                <label className="px-4 py-2 bg-teal-600 text-white rounded-xl text-[10px] font-black cursor-pointer hover:bg-teal-700 transition-all">
-                  Upload Assinatura
-                  <input type="file" className="hidden" accept="image/*" onChange={handleSignatureUpload} />
+            <div className="sm:col-span-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4">
+              <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider block">Minha Assinatura</label>
+              
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    checked={currentUser?.signatureType !== 'GOV_BR'} 
+                    onChange={() => currentUser && setCurrentUser({...currentUser, signatureType: 'UPLOADED'})}
+                    className="accent-teal-600"
+                  />
+                  <span className="text-[10px] font-bold text-slate-700">Assinatura Digitalizada</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="radio" 
+                    checked={currentUser?.signatureType === 'GOV_BR'} 
+                    onChange={() => currentUser && setCurrentUser({...currentUser, signatureType: 'GOV_BR'})}
+                    className="accent-teal-600"
+                  />
+                  <span className="text-[10px] font-bold text-slate-700">Assinatura GOV.BR</span>
                 </label>
               </div>
+
+              {currentUser?.signatureType !== 'GOV_BR' && (
+                <div className="flex items-center gap-4">
+                  <div className="w-32 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden">
+                    {currentUser?.signature ? (
+                      <img src={currentUser.signature} className="max-h-full object-contain" alt="Assinatura" />
+                    ) : (
+                      <span className="text-[8px] text-slate-400">Sem assinatura</span>
+                    )}
+                  </div>
+                  <label className="px-4 py-2 bg-teal-600 text-white rounded-xl text-[10px] font-black cursor-pointer hover:bg-teal-700 transition-all">
+                    Upload Assinatura
+                    <input type="file" className="hidden" accept="image/*" onChange={handleSignatureUpload} />
+                  </label>
+                </div>
+              )}
+              <p className="text-[8px] text-slate-400 italic">O sistema removerá o fundo automaticamente das imagens.</p>
             </div>
 
             <div className="sm:col-span-2 space-y-1">
