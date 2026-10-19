@@ -36,6 +36,7 @@ export interface ConsolidatedReportResult {
 export interface OfficialReportPDFData {
   institutionName: string;
   dateLabel: string;
+  reportDate?: string; // Exact weekly date YYYY-MM-DD or DD/MM/AAAA
   reporterName: string;
   tithes: number;
   offers: number;
@@ -66,6 +67,31 @@ export interface OfficialReportPDFData {
   noDiscount?: boolean;
   consolidatedData?: ConsolidatedReportResult;
 }
+
+export const formatDateBR = (val?: string): string => {
+  if (!val) return '';
+  const clean = val.trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) return clean;
+  if (/^\d{4}-\d{2}-\d{2}/.test(clean)) {
+    const parts = clean.slice(0, 10).split('-');
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return clean;
+};
+
+export const getCompetenceFromDate = (val?: string): string => {
+  if (!val) return '';
+  const clean = val.trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
+    const parts = clean.split('/');
+    return `${parts[1]}/${parts[2]}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(clean)) {
+    const parts = clean.slice(0, 10).split('-');
+    return `${parts[1]}/${parts[0]}`;
+  }
+  return clean;
+};
 
 export const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
@@ -645,13 +671,19 @@ export function formatNormalReportText(
   const president = settings?.president || settings?.pastorName || 'Pr. Antônio Chaves Crus';
   const cnpj = settings?.cnpj || '49.386.673/0001-10';
 
+  const rawDate = data.reportDate || data.dateLabel || '';
+  const dateFormatted = formatDateBR(rawDate) || 'N/D';
+  const compFormatted = getCompetenceFromDate(rawDate) || data.dateLabel || 'GERAL';
+
   const lines: string[] = [
     instTitle,
+    'RELATÓRIO FINANCEIRO SEMANAL',
     `CONGREGAÇÃO / UNIDADE: ${data.institutionName.toUpperCase()}`,
     `CNPJ: ${cnpj}`,
     `PR. PRESIDENTE: ${president}`,
     `TESOUREIRO / RESPONSÁVEL: ${data.reporterName.toUpperCase()}`,
-    `COMPETÊNCIA: ${data.dateLabel}`,
+    `DATA DO RELATÓRIO (SEMANAL): ${dateFormatted}`,
+    `COMPETÊNCIA: ${compFormatted}`,
     '',
     'ENTRADAS / RECEITAS',
     '',
@@ -971,22 +1003,32 @@ export const buildNormalReportPDF = (
   const cnpj = settings?.cnpj || '49.386.673/0001-10';
   const president = settings?.president || settings?.pastorName || 'Pr. Antônio Chaves Crus';
 
+  const rawDate = report.reportDate || report.dateLabel || '';
+  const dateFormatted = formatDateBR(rawDate) || 'N/D';
+  const compFormatted = getCompetenceFromDate(rawDate) || report.dateLabel || 'GERAL';
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
+  doc.setFontSize(11.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(instTitle, textStartX, 13);
+  doc.text(instTitle, textStartX, 12);
 
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(29, 78, 216);
-  doc.text(`CONGREGAÇÃO: ${(report.institutionName || 'SEDE').toUpperCase()}`, textStartX, 19);
+  doc.text(`RELATÓRIO FINANCEIRO SEMANAL - ${(report.institutionName || 'SEDE').toUpperCase()}`, textStartX, 18);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
-  doc.text(`CNPJ: ${cnpj}`, textStartX, 25);
-  doc.text(`PR. PRESIDENTE: ${president.toUpperCase()}`, textStartX, 30);
+  doc.text(`CNPJ: ${cnpj}  |  PR. PRESIDENTE: ${president.toUpperCase()}`, textStartX, 24);
+  doc.setTextColor(29, 78, 216);
   doc.text(
-    `COMPETÊNCIA: ${(report.dateLabel || '').toUpperCase()}  |  TESOUREIRO: ${(report.reporterName || '').toUpperCase()}`,
+    `DATA DO RELATÓRIO: ${dateFormatted}  |  COMPETÊNCIA: ${compFormatted}`,
+    textStartX,
+    29.5
+  );
+  doc.setTextColor(71, 85, 105);
+  doc.text(
+    `TESOUREIRO: ${(report.reporterName || '').toUpperCase()}`,
     textStartX,
     35
   );
@@ -1122,6 +1164,11 @@ export const buildNormalReportPDF = (
   if (y + 18 <= pageHeight - 8) {
     doc.setDrawColor(148, 163, 184);
     doc.setLineWidth(0.25);
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Data de Fechamento do Relatório Semanal: ${dateFormatted}`, pageWidth / 2, signatureY - 3, { align: 'center' });
 
     const tName = report.reporterName || settings?.treasurerName || 'TESOUREIRO RESPONSÁVEL';
     const tRole = settings?.treasurerRole || 'Tesoureiro Local';

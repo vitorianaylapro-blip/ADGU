@@ -2,6 +2,8 @@ import React from 'react';
 import {
   ConsolidatedReportResult,
   formatBRL,
+  formatDateBR,
+  getCompetenceFromDate,
   isSedeTransferRevenue,
   OfficialReportPDFData,
   SystemSettings,
@@ -221,7 +223,9 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
   // -------------------------------------------------------------
   const normData = report as OfficialReportPDFData;
   const unitName = (normData.institutionName || 'CONGREGAÇÃO LOCAL').toUpperCase();
-  const competence = normData.dateLabel || 'COMPETÊNCIA ATUAL';
+  const rawDate = normData.reportDate || normData.dateLabel || '';
+  const dateFormatted = formatDateBR(rawDate) || 'N/D';
+  const competence = getCompetenceFromDate(rawDate) || normData.dateLabel || 'COMPETÊNCIA ATUAL';
   const totalSaidas =
     (normData.sedeExpense || 0) +
     (normData.prebendaExpense || 0) +
@@ -242,7 +246,15 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
         ) : (
           <Logo size="sm" className="w-14 h-14 shrink-0" />
         )}
-        <div className="space-y-0.5 flex-1">
+        <div className="space-y-1 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-[#1d4ed8] border border-blue-200">
+              RELATÓRIO FINANCEIRO SEMANAL
+            </span>
+            <span className="text-[10px] font-black text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+              DATA: <span className="text-[#1d4ed8] font-black">{dateFormatted}</span>
+            </span>
+          </div>
           <h2 className="text-sm sm:text-base font-black text-[#0f172a] uppercase tracking-tight leading-snug">
             {institutionTitle}
           </h2>
@@ -261,6 +273,10 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
             <span>
               TESOUREIRO:{' '}
               <span className="font-black text-slate-900">{treasurerName}</span>
+            </span>
+            <span>
+              DATA DO RELATÓRIO:{' '}
+              <span className="font-black text-slate-900">{dateFormatted}</span>
             </span>
             <span className="text-[#1d4ed8] font-black">
               COMPETÊNCIA: {competence}
@@ -431,21 +447,26 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
         </div>
 
         {/* Assinaturas */}
-        <div className="grid grid-cols-2 gap-10 pt-6 px-4 print:pt-5">
-          <div className="text-center">
-            <div className="border-t border-slate-400 pt-1.5">
-              <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
-                {treasurerName.toUpperCase()}
-              </p>
-              <p className="text-[9px] text-slate-500 leading-tight">{treasurerRole}</p>
+        <div className="pt-6 px-4 print:pt-5 space-y-4">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
+            Fechamento do Relatório Financeiro Semanal — Data: <span className="text-[#1d4ed8] font-black">{dateFormatted}</span>
+          </p>
+          <div className="grid grid-cols-2 gap-10">
+            <div className="text-center">
+              <div className="border-t border-slate-400 pt-1.5">
+                <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
+                  {treasurerName.toUpperCase()}
+                </p>
+                <p className="text-[9px] text-slate-500 leading-tight">{treasurerRole}</p>
+              </div>
             </div>
-          </div>
-          <div className="text-center">
-            <div className="border-t border-slate-400 pt-1.5">
-              <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
-                {president.toUpperCase()}
-              </p>
-              <p className="text-[9px] text-slate-500 leading-tight">{pastorRole}</p>
+            <div className="text-center">
+              <div className="border-t border-slate-400 pt-1.5">
+                <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
+                  {president.toUpperCase()}
+                </p>
+                <p className="text-[9px] text-slate-500 leading-tight">{pastorRole}</p>
+              </div>
             </div>
           </div>
         </div>

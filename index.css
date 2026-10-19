@@ -47,7 +47,9 @@ body {
     overflow: visible !important;
   }
 
-  #printable-report-area {
+  #printable-report-area,
+  #printable-receipt-area,
+  #printable-multi-receipt-area {
     display: block !important;
     position: static !important;
     width: 100% !important;
@@ -58,3 +60,4 @@ body {
     break-inside: avoid !important;
   }
 }
+

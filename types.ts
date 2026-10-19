@@ -91,8 +91,12 @@ export interface ReceiptRecord {
   city: string;
   treasurerName: string;
   treasurerRole?: string;
+  treasurerCpf?: string;
+  treasurerSignature?: string; // Base64 transparent PNG
   pastorName: string;
   pastorRole?: string;
+  pastorCpf?: string;
+  pastorSignature?: string; // Base64 transparent PNG
   institutionName: string;
   tithes?: number;
   offerings?: number;

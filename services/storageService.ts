@@ -10,8 +10,12 @@ export interface SystemSettings {
   president: string;
   treasurerName?: string;
   treasurerRole?: string;
+  treasurerCpf?: string;
+  treasurerSignature?: string; // Base64 transparent PNG
   pastorName?: string;
   pastorRole?: string;
+  pastorCpf?: string;
+  pastorSignature?: string; // Base64 transparent PNG
   closingDay: number;
 }
 
@@ -136,8 +140,12 @@ function mapReceiptFromDb(r: any): ReceiptRecord {
     city: r.city,
     treasurerName: r.treasurername,
     treasurerRole: r.treasurerrole || undefined,
+    treasurerCpf: r.treasurercpf || undefined,
+    treasurerSignature: r.treasurersignature || undefined,
     pastorName: r.pastorname,
     pastorRole: r.pastorrole || undefined,
+    pastorCpf: r.pastorcpf || undefined,
+    pastorSignature: r.pastorsignature || undefined,
     institutionName: r.institutionname,
     tithes: Number(r.tithes) || 0,
     offerings: Number(r.offerings) || 0,
@@ -486,8 +494,12 @@ export const getSettings = async (): Promise<SystemSettings> => {
         president: r.president || 'Pr. Antônio Chaves Crus',
         treasurerName: r.treasurername || 'Tesoureiro Local',
         treasurerRole: r.treasurerrole || 'Tesoureiro Responsável',
+        treasurerCpf: r.treasurercpf || '',
+        treasurerSignature: r.treasurersignature || '',
         pastorName: r.pastorname || 'Pr. Antônio Chaves Crus',
         pastorRole: r.pastorrole || 'Pastor Presidente / Dirigente',
+        pastorCpf: r.pastorcpf || '',
+        pastorSignature: r.pastorsignature || '',
         closingDay: Number(r.closingday) || 1,
         logo: r.logo || ''
       };
@@ -510,8 +522,12 @@ export const getSettings = async (): Promise<SystemSettings> => {
         president: 'Pr. Antônio Chaves Crus',
         treasurerName: 'Tesoureiro Local',
         treasurerRole: 'Tesoureiro Responsável',
+        treasurerCpf: '',
+        treasurerSignature: '',
         pastorName: 'Pr. Antônio Chaves Crus',
         pastorRole: 'Pastor Presidente / Dirigente',
+        pastorCpf: '',
+        pastorSignature: '',
         closingDay: 1,
         ...parsed
       };
@@ -526,8 +542,12 @@ export const getSettings = async (): Promise<SystemSettings> => {
     president: 'Pr. Antônio Chaves Crus',
     treasurerName: 'Tesoureiro Local',
     treasurerRole: 'Tesoureiro Responsável',
+    treasurerCpf: '',
+    treasurerSignature: '',
     pastorName: 'Pr. Antônio Chaves Crus',
     pastorRole: 'Pastor Presidente / Dirigente',
+    pastorCpf: '',
+    pastorSignature: '',
     closingDay: 1
   };
 };

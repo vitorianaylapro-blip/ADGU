@@ -310,6 +310,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({
     return {
       institutionName: unitName,
       dateLabel: getCompetenceFromDate(refDate),
+      reportDate: refDate,
       reporterName: reporter,
       tithes,
       offers,
@@ -342,7 +343,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({
     const refDate = date || initialData?.date || new Date().toISOString().split('T')[0];
     const unitName = (initialData?.institutionName || session.institution || 'Congregacao').replace(/[^a-zA-Z0-9_-]/g, '_');
     const doc = buildOfficialReportPDF(getReportPDFData(), settings);
-    doc.save(`ADGU_Relatorio_${unitName}_${refDate.slice(0, 7)}.pdf`);
+    doc.save(`ADGU_Relatorio_Semanal_${unitName}_${refDate}.pdf`);
   };
 
   const handlePrintReport = () => {
@@ -523,19 +524,22 @@ export const ReportForm: React.FC<ReportFormProps> = ({
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
                 {readOnly
-                  ? 'Visualização do Relatório'
+                  ? 'Visualização do Relatório Semanal'
                   : initialData
-                  ? 'Ajustar Lançamentos'
-                  : 'Novo Lançamento de Competência'}
+                  ? 'Ajustar Relatório Semanal'
+                  : 'Novo Relatório Financeiro Semanal'}
               </h2>
+              <span className="px-3 py-1 bg-blue-100 text-[#1d4ed8] border border-blue-200 rounded-full text-[8px] font-black uppercase tracking-widest">
+                Semanal
+              </span>
               {noDiscount && (
-                <span className="px-3 py-1 bg-blue-50 text-[#1d4ed8] border border-blue-200 rounded-full text-[8px] font-black uppercase tracking-widest">
+                <span className="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[8px] font-black uppercase tracking-widest">
                   Sem Desconto de 20%
                 </span>
               )}
             </div>
-            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-              Competência: {getCompetenceFromDate(date)}
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">
+              Data do Relatório: <span className="text-[#1d4ed8] font-black">{dateInput}</span> • Competência: {getCompetenceFromDate(date)}
             </p>
           </div>
         </div>
@@ -593,24 +597,63 @@ export const ReportForm: React.FC<ReportFormProps> = ({
 
         {activeTab === 'RECEITAS' && (
           <div className="space-y-10 animate-in slide-in-from-right-8 duration-500 relative z-10">
-            <div className="max-w-sm">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] ml-4 mb-2 block">
-                Data / Competência
-              </label>
-              <div className="relative">
-                <Calendar
-                  className="absolute left-5 top-1/2 -translate-y-1/2 text-[#1d4ed8]"
-                  size={18}
-                />
-                <input
-                  type="text"
-                  disabled={readOnly}
-                  value={dateInput}
-                  onChange={(e) => handleDateInputChange(e.target.value)}
-                  placeholder="DD/MM/AAAA"
-                  className="w-full pl-14 pr-6 py-4 bg-slate-50 rounded-2xl border-2 border-transparent font-bold text-sm focus:bg-white focus:border-blue-200 transition-all outline-none"
-                />
+            <div className="max-w-md bg-blue-50/50 p-4 rounded-3xl border border-blue-100/80">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[10px] font-black text-[#1d4ed8] uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar size={14} /> Data do Relatório Semanal
+                </label>
+                {!readOnly && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = new Date().toISOString().split('T')[0];
+                        setDate(today);
+                      }}
+                      className="text-[9px] font-black uppercase px-2 py-0.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:text-[#1d4ed8] hover:border-blue-300 transition-all shadow-2xs"
+                    >
+                      Hoje
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        const day = d.getDay(); // 0 is Sunday
+                        d.setDate(d.getDate() - day);
+                        const sun = d.toISOString().split('T')[0];
+                        setDate(sun);
+                      }}
+                      className="text-[9px] font-black uppercase px-2 py-0.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:text-[#1d4ed8] hover:border-blue-300 transition-all shadow-2xs"
+                    >
+                      Domingo
+                    </button>
+                  </div>
+                )}
               </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  disabled={readOnly}
+                  value={date}
+                  onChange={(e) => {
+                    if (e.target.value) setDate(e.target.value);
+                  }}
+                  className="px-3 py-3 bg-white rounded-2xl border border-slate-200 font-bold text-xs text-slate-800 outline-none focus:border-[#1d4ed8] cursor-pointer"
+                />
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    disabled={readOnly}
+                    value={dateInput}
+                    onChange={(e) => handleDateInputChange(e.target.value)}
+                    placeholder="DD/MM/AAAA"
+                    className="w-full px-4 py-3 bg-white rounded-2xl border border-slate-200 font-black text-sm text-[#0f172a] focus:border-[#1d4ed8] outline-none tracking-wide text-center"
+                  />
+                </div>
+              </div>
+              <p className="text-[9px] text-slate-500 font-semibold mt-2">
+                Os relatórios são semanais. Informe o dia do culto ou domingo deste fechamento.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10">

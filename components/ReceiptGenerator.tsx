@@ -6,7 +6,8 @@ import { jsPDF } from 'jspdf';
 import { 
   Receipt, Plus, Search, Printer, Trash2, CheckCircle2, FileText, User, Building, 
   DollarSign, Calendar, AlertCircle, Coins, Sparkles, TrendingUp, HandCoins, Share2, 
-  Copy, Check, Settings2, Scissors, ArrowDownToLine, Eye, RefreshCw, X, ShieldCheck
+  Copy, Check, Settings2, Scissors, ArrowDownToLine, Eye, RefreshCw, X, ShieldCheck,
+  MessageCircle, CheckSquare, Square, Maximize2, Minimize2, Layers, ChevronDown
 } from 'lucide-react';
 
 interface ReceiptGeneratorProps {
@@ -59,6 +60,14 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [previewVia, setPreviewVia] = useState<'1' | '2'>('1');
   const [selectedReceiptForPreview, setSelectedReceiptForPreview] = useState<ReceiptRecord | null>(null);
+
+  // New features: Dedicated Eye modal ("Olhinho"), preview size, and multi-receipt print
+  const [viewingReceiptModal, setViewingReceiptModal] = useState<ReceiptRecord | null>(null);
+  const [modalMode, setModalMode] = useState<'SINGLE' | '2VIAS' | 'MULTI'>('SINGLE');
+  const [previewSize, setPreviewSize] = useState<'NORMAL' | 'LARGE'>('LARGE');
+  const [printMode, setPrintMode] = useState<'SINGLE' | '2VIAS' | 'MULTI'>('2VIAS');
+  const [multiPrintList, setMultiPrintList] = useState<ReceiptRecord[]>([]);
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
 
   const showError = (msg: string) => {
     setErrorMsg(msg);
@@ -268,6 +277,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
 
       await saveReceipt(newReceipt);
       setSelectedReceiptForPreview(newReceipt);
+      setViewingReceiptModal(newReceipt);
 
       setSuccessMsg(`Documento ${numStr} gerado com sucesso!`);
       setTimeout(() => setSuccessMsg(null), 4000);
@@ -724,45 +734,825 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
     doc.text("ADGU - Gerando Vidas para o Reino!", startX + cardWidth / 2, startY + cardHeight - 2.5, { align: 'center' });
   };
 
-  // Export PDF A4 (2 Vias por folha - Padrão Eclesiástico / Contábil Brasileiro com Calibração GOV.BR)
-  const exportPDF_A4 = async (receipt: ReceiptRecord) => {
+  // ----------------------------------------------------
+  // DRAW SINGLE VIA LARGE (A4 ÚNICO - GRANDE E LIMPO)
+  // ----------------------------------------------------
+  const drawSingleViaLarge = (
+    doc: any,
+    receipt: ReceiptRecord,
+    settings: SystemSettings,
+    layout: 'DUAL' | 'SINGLE_PASTOR' | 'SINGLE_TREASURER' = signatureLayout
+  ) => {
+    const pageWidth = doc.internal.pageSize.getWidth(); // 210 mm
+    const startX = 14;
+    const startY = 16;
+    const cardWidth = pageWidth - 28; // 182 mm
+    const cardHeight = 254; // Ocupa a folha A4 com proporção harmoniosa
+
+    const tealDark = [23, 147, 145]; // #179391
+    const tealLight = [230, 246, 245]; // #e6f6f5
+    const borderSlate = [203, 213, 225]; // #cbd5e1
+    const textDark = [15, 23, 42]; // #0f172a
+    const textMuted = [100, 116, 139]; // #64748b
+
+    // Borda Externa do Recibo
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.setLineWidth(0.4);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(startX, startY, cardWidth, cardHeight, 3.5, 3.5, 'FD');
+
+    // Faixa Superior
+    doc.setFillColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.roundedRect(startX, startY, cardWidth, 4, 3.5, 3.5, 'F');
+    doc.rect(startX, startY + 2, cardWidth, 2, 'F');
+
+    // Logo
+    const logoX = startX + 6;
+    const logoY = startY + 9;
+    const logoSize = 22;
+    if (settings.logo) {
+      try {
+        doc.addImage(settings.logo, 'PNG', logoX, logoY, logoSize, logoSize);
+      } catch (e) {}
+    }
+
+    // Cabeçalho da Instituição
+    const textX = settings.logo ? (logoX + logoSize + 6) : (startX + 8);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+    doc.text((settings.institutionName || "Assembléia de Deus Geração Unida").toUpperCase(), textX, startY + 15);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+    doc.text(`CNPJ: ${settings.cnpj || '49.386.673/0001-10'}   |   Ministério Eclesiástico ADGU`, textX, startY + 21);
+    doc.text(settings.address || "Rua 12 de Outubro, 779 - Parque Tijuca - Maracanaú - CE", textX, startY + 26);
+    doc.text(`Contato: ${settings.email || 'guparquetijuca@gmail.com'}`, textX, startY + 31);
+
+    // Badges Nº e Total à Direita
+    const badgeW = 56;
+    const badgeX = startX + cardWidth - badgeW - 6;
+
+    // Badge Nº & Identificação
+    doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+    doc.setDrawColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(badgeX, startY + 9, badgeW, 11, 2, 2, 'FD');
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.text(receipt.number, badgeX + badgeW / 2, startY + 14.5, { align: 'center' });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+    doc.text("RECIBO OFICIAL (VIA ÚNICA)", badgeX + badgeW / 2, startY + 18.5, { align: 'center' });
+
+    // Badge TOTAL
+    doc.setFillColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.roundedRect(badgeX, startY + 22, badgeW, 11, 2, 2, 'F');
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`TOTAL: ${formatBRL(receipt.amount)}`, badgeX + badgeW / 2, startY + 29.5, { align: 'center' });
+
+    // Divisor
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.setLineWidth(0.3);
+    doc.line(startX + 6, startY + 36, startX + cardWidth - 6, startY + 36);
+
+    // Corpo
+    let curY = startY + 43;
+    const bodyW = cardWidth - 12;
+    const bodyX = startX + 6;
+    const dateFormatted = new Date(receipt.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const extenso = valorPorExtenso(receipt.amount);
+
+    if (receipt.type === 'RECEITA') {
+      const halfW = (bodyW - 4) / 2;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, halfW, 10, 'FD');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(`CONGREGAÇÃO: ${receipt.institutionName.toUpperCase()}`, bodyX + 4, curY + 6.5);
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX + halfW + 4, curY, halfW, 10, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text(`DATA DO CULTO: ${receipt.city || 'Maracanaú - CE'}, ${dateFormatted}`, bodyX + halfW + 6, curY + 6.5);
+
+      curY += 15;
+
+      const colW = (bodyW - 6) / 3;
+      const colH = 22;
+
+      // Col 1 Dízimos
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, colW, colH, 'FD');
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX, curY, colW, 6.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("DÍZIMOS", bodyX + colW / 2, curY + 4.5, { align: 'center' });
+      doc.setFontSize(13);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(formatBRL(receipt.tithes || 0), bodyX + colW / 2, curY + 16, { align: 'center' });
+
+      // Col 2 Ofertas
+      const col2X = bodyX + colW + 3;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(col2X, curY, colW, colH, 'FD');
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(col2X, curY, colW, 6.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("OFERTAS", col2X + colW / 2, curY + 4.5, { align: 'center' });
+      doc.setFontSize(13);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(formatBRL(receipt.offerings || 0), col2X + colW / 2, curY + 16, { align: 'center' });
+
+      // Col 3 Especial
+      const col3X = bodyX + (colW * 2) + 6;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(col3X, curY, colW, colH, 'FD');
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(col3X, curY, colW, 6.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("OFERTA ESPECIAL", col3X + colW / 2, curY + 4.5, { align: 'center' });
+      doc.setFontSize(13);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(formatBRL(receipt.specialOfferings || 0), col3X + colW / 2, curY + 16, { align: 'center' });
+
+      curY += colH + 4;
+
+      // Faixa Total e Extenso
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX, curY, bodyW, 14, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("VALOR TOTAL:", bodyX + 4, curY + 9);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      const extensoLines = doc.splitTextToSize(`${formatBRL(receipt.amount)} (${extenso})`, bodyW - 40);
+      doc.text(extensoLines, bodyX + 38, curY + 9);
+
+      if (receipt.description) {
+        curY += 18;
+        doc.setFillColor(255, 255, 255);
+        doc.rect(bodyX, curY, bodyW, 10, 'FD');
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.5);
+        doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+        doc.text("OBSERVAÇÕES:", bodyX + 4, curY + 6.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+        doc.text(receipt.description, bodyX + 38, curY + 6.5);
+      }
+
+      curY += 24;
+    } else {
+      // DESPESA ou MEMBRO
+      const label1 = receipt.type === 'MEMBRO' ? "Recebemos do(a) irmão(ã)" : "Paguei(amos) a";
+      
+      // Favorecido
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, bodyW, 12, 'FD');
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(label1, bodyX + 4, curY + 7.5);
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      const nameWithDoc = `${receipt.personName.toUpperCase()} ${receipt.docNumber ? `(CPF/CNPJ: ${receipt.docNumber})` : ''}`;
+      const nameLines = doc.splitTextToSize(nameWithDoc, bodyW - 46);
+      doc.text(nameLines, bodyX + 44, curY + 7.5);
+
+      curY += 16;
+
+      // Importância de
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX, curY, bodyW, 13, 'F');
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("a importância de", bodyX + 4, curY + 8);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      const valorExtensoLines = doc.splitTextToSize(`${formatBRL(receipt.amount)} (${extenso})`, bodyW - 42);
+      doc.text(valorExtensoLines, bodyX + 38, curY + 8);
+
+      curY += 17;
+
+      // Referente a
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, bodyW, 14, 'FD');
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text("referente a", bodyX + 4, curY + 8.5);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      const descLines = doc.splitTextToSize(receipt.description, bodyW - 32);
+      doc.text(descLines, bodyX + 30, curY + 8.5);
+
+      curY += 18;
+
+      // Congregação e Data
+      const halfW = (bodyW - 4) / 2;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, halfW, 10, 'FD');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(`Congregação: ${receipt.institutionName.toUpperCase()}`, bodyX + 4, curY + 6.5);
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX + halfW + 4, curY, halfW, 10, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text(`${receipt.city || 'Maracanaú - CE'}, ${dateFormatted}`, bodyX + halfW + 7, curY + 6.5);
+
+      curY += 15;
+    }
+
+    // Assinaturas Amplas (com espaço generoso para carimbo GOV.BR ou caneta)
+    const sigBoxH = 64;
+    const sigY = Math.max(curY + 8, startY + cardHeight - sigBoxH - 12);
+
+    if (layout === 'SINGLE_PASTOR' || layout === 'SINGLE_TREASURER') {
+      const isTreasurer = layout === 'SINGLE_TREASURER';
+      const sigBoxW = 140;
+      const singleX = bodyX + (bodyW - sigBoxW) / 2;
+      const title = isTreasurer ? "TESOURARIA GERAL" : "DIRETORIA / DIRIGENTE RESPONSÁVEL";
+      const signerName = isTreasurer ? (receipt.treasurerName || 'Tesoureiro Geral') : (receipt.pastorName || 'Pr. Antônio Chaves Crus');
+      const signerRole = isTreasurer ? (receipt.treasurerRole || 'Tesoureiro Geral') : (receipt.pastorRole || 'Pastor Presidente / Dirigente');
+
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+      doc.setLineWidth(0.35);
+      doc.roundedRect(singleX, sigY, sigBoxW, sigBoxH, 2.5, 2.5, 'FD');
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.roundedRect(singleX, sigY, sigBoxW, 7, 2.5, 2.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text(title, singleX + sigBoxW / 2, sigY + 5, { align: 'center' });
+
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.3);
+      doc.line(singleX + 16, sigY + 46, singleX + sigBoxW - 16, sigY + 46);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(signerName.toUpperCase(), singleX + sigBoxW / 2, sigY + 52, { align: 'center' });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(signerRole, singleX + sigBoxW / 2, sigY + 57, { align: 'center' });
+    } else {
+      const sigBoxW = (bodyW - 6) / 2;
+
+      // Sig 1: Tesouraria
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+      doc.setLineWidth(0.35);
+      doc.roundedRect(bodyX, sigY, sigBoxW, sigBoxH, 2.5, 2.5, 'FD');
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.roundedRect(bodyX, sigY, sigBoxW, 7, 2.5, 2.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("TESOURARIA GERAL", bodyX + sigBoxW / 2, sigY + 5, { align: 'center' });
+
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.3);
+      doc.line(bodyX + 10, sigY + 46, bodyX + sigBoxW - 10, sigY + 46);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text((receipt.treasurerName || 'Tesoureiro Geral').toUpperCase(), bodyX + sigBoxW / 2, sigY + 52, { align: 'center' });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(receipt.treasurerRole || 'Tesoureiro Geral', bodyX + sigBoxW / 2, sigY + 57, { align: 'center' });
+
+      // Sig 2: Diretoria / Pastor
+      const sig2X = bodyX + sigBoxW + 6;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+      doc.setLineWidth(0.35);
+      doc.roundedRect(sig2X, sigY, sigBoxW, sigBoxH, 2.5, 2.5, 'FD');
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.roundedRect(sig2X, sigY, sigBoxW, 7, 2.5, 2.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("DIRETORIA / DIRIGENTE RESPONSÁVEL", sig2X + sigBoxW / 2, sigY + 5, { align: 'center' });
+
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.3);
+      doc.line(sig2X + 10, sigY + 46, sig2X + sigBoxW - 10, sigY + 46);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text((receipt.pastorName || 'Pr. Antônio Chaves Crus').toUpperCase(), sig2X + sigBoxW / 2, sigY + 52, { align: 'center' });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(receipt.pastorRole || 'Pastor Presidente / Dirigente', sig2X + sigBoxW / 2, sigY + 57, { align: 'center' });
+    }
+
+    // Slogan Oficial
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.text("ADGU - Gerando Vidas para o Reino!", startX + cardWidth / 2, startY + cardHeight - 3.5, { align: 'center' });
+  };
+
+  // ----------------------------------------------------
+  // DRAW SINGLE VIA COMPACT (A4 PREENCHIDA COM VÁRIOS - 3 POR PÁGINA)
+  // ----------------------------------------------------
+  const drawSingleViaCompact = (
+    doc: any,
+    receipt: ReceiptRecord,
+    startX: number,
+    startY: number,
+    cardWidth: number,
+    cardHeight: number,
+    viaLabel: string,
+    settings: SystemSettings,
+    layout: 'DUAL' | 'SINGLE_PASTOR' | 'SINGLE_TREASURER' = signatureLayout
+  ) => {
+    const tealDark = [23, 147, 145];
+    const tealLight = [230, 246, 245];
+    const borderSlate = [203, 213, 225];
+    const textDark = [15, 23, 42];
+    const textMuted = [100, 116, 139];
+
+    // Card Box
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.setLineWidth(0.3);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(startX, startY, cardWidth, cardHeight, 2, 2, 'FD');
+
+    // Faixa Superior
+    doc.setFillColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.roundedRect(startX, startY, cardWidth, 2, 2, 2, 'F');
+    doc.rect(startX, startY + 1, cardWidth, 1, 'F');
+
+    // Logo
+    const logoX = startX + 3.5;
+    const logoY = startY + 4;
+    const logoSize = 12;
+    if (settings.logo) {
+      try {
+        doc.addImage(settings.logo, 'PNG', logoX, logoY, logoSize, logoSize);
+      } catch (e) {}
+    }
+
+    // Header Texts
+    const textX = settings.logo ? (logoX + logoSize + 3.5) : (startX + 5);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+    doc.text(settings.institutionName || "Assembléia de Deus Geração Unida", textX, startY + 7);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+    doc.text(`CNPJ: ${settings.cnpj || '49.386.673/0001-10'} | Ministério ADGU`, textX, startY + 10.5);
+    doc.text(settings.address || "Rua 12 de Outubro, 779 - Parque Tijuca - Maracanaú - CE", textX, startY + 13.8);
+
+    // Badges right
+    const badgeW = 44;
+    const badgeX = startX + cardWidth - badgeW - 3.5;
+
+    // Badge Nº & Via
+    doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+    doc.setDrawColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(badgeX, startY + 3.5, badgeW, 6.5, 1, 1, 'FD');
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.8);
+    doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.text(receipt.number, badgeX + badgeW / 2, startY + 6.5, { align: 'center' });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(5.5);
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+    doc.text(viaLabel.toUpperCase(), badgeX + badgeW / 2, startY + 9, { align: 'center' });
+
+    // Badge Total
+    doc.setFillColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.roundedRect(badgeX, startY + 11, badgeW, 6.5, 1, 1, 'F');
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`TOTAL: ${formatBRL(receipt.amount)}`, badgeX + badgeW / 2, startY + 15.5, { align: 'center' });
+
+    // Horizontal Line
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.setLineWidth(0.2);
+    doc.line(startX + 3.5, startY + 18.5, startX + cardWidth - 3.5, startY + 18.5);
+
+    // Body
+    let curY = startY + 21;
+    const bodyW = cardWidth - 7;
+    const bodyX = startX + 3.5;
+    const dateFormatted = new Date(receipt.date + 'T12:00:00').toLocaleDateString('pt-BR');
+    const extenso = valorPorExtenso(receipt.amount);
+
+    if (receipt.type === 'RECEITA') {
+      const halfW = (bodyW - 2) / 2;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, halfW, 5.5, 'FD');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(`CONGREGAÇÃO: ${receipt.institutionName.toUpperCase()}`, bodyX + 2, curY + 3.8);
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX + halfW + 2, curY, halfW, 5.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text(`DATA: ${receipt.city || 'Maracanaú - CE'}, ${dateFormatted}`, bodyX + halfW + 4, curY + 3.8);
+
+      curY += 7.5;
+
+      const colW = (bodyW - 3) / 3;
+      const colH = 10;
+
+      // Col 1
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, colW, colH, 'FD');
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX, curY, colW, 3.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(5.8);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("DÍZIMOS", bodyX + colW / 2, curY + 2.5, { align: 'center' });
+      doc.setFontSize(8);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(formatBRL(receipt.tithes || 0), bodyX + colW / 2, curY + 7.8, { align: 'center' });
+
+      // Col 2
+      const col2X = bodyX + colW + 1.5;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(col2X, curY, colW, colH, 'FD');
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(col2X, curY, colW, 3.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(5.8);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("OFERTAS", col2X + colW / 2, curY + 2.5, { align: 'center' });
+      doc.setFontSize(8);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(formatBRL(receipt.offerings || 0), col2X + colW / 2, curY + 7.8, { align: 'center' });
+
+      // Col 3
+      const col3X = bodyX + (colW * 2) + 3;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(col3X, curY, colW, colH, 'FD');
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(col3X, curY, colW, 3.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(5.8);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("ESPECIAL", col3X + colW / 2, curY + 2.5, { align: 'center' });
+      doc.setFontSize(8);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(formatBRL(receipt.specialOfferings || 0), col3X + colW / 2, curY + 7.8, { align: 'center' });
+
+      curY += colH + 2;
+
+      // Extenso
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX, curY, bodyW, 6.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("TOTAL RECEITA:", bodyX + 2, curY + 4.2);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      const extensoLines = doc.splitTextToSize(`${formatBRL(receipt.amount)} (${extenso})`, bodyW - 30);
+      doc.text(extensoLines, bodyX + 26, curY + 4.2);
+
+      curY += 8.5;
+    } else {
+      // DESPESA / MEMBRO
+      const label1 = receipt.type === 'MEMBRO' ? "Recebemos de" : "Paguei a";
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, bodyW, 6, 'FD');
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(label1, bodyX + 2, curY + 4);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      const nameWithDoc = `${receipt.personName.toUpperCase()} ${receipt.docNumber ? `(CPF/CNPJ: ${receipt.docNumber})` : ''}`;
+      const nameLines = doc.splitTextToSize(nameWithDoc, bodyW - 28);
+      doc.text(nameLines, bodyX + 26, curY + 4);
+
+      curY += 7.5;
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX, curY, bodyW, 6, 'F');
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("A quantia de", bodyX + 2, curY + 4);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      const valorExtensoLines = doc.splitTextToSize(`${formatBRL(receipt.amount)} (${extenso})`, bodyW - 26);
+      doc.text(valorExtensoLines, bodyX + 22, curY + 4);
+
+      curY += 7.5;
+
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, bodyW, 6, 'FD');
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text("Referente a", bodyX + 2, curY + 4);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      const descLines = doc.splitTextToSize(receipt.description, bodyW - 22);
+      doc.text(descLines, bodyX + 20, curY + 4);
+
+      curY += 7.5;
+
+      const halfW = (bodyW - 2) / 2;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(bodyX, curY, halfW, 5, 'FD');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(`Congregação: ${receipt.institutionName.toUpperCase()}`, bodyX + 2, curY + 3.5);
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.rect(bodyX + halfW + 2, curY, halfW, 5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text(`${receipt.city || 'Maracanaú - CE'}, ${dateFormatted}`, bodyX + halfW + 4, curY + 3.5);
+
+      curY += 7;
+    }
+
+    // Assinaturas compactas
+    const sigBoxH = 21;
+    const sigY = startY + cardHeight - sigBoxH - 3;
+
+    if (layout === 'SINGLE_PASTOR' || layout === 'SINGLE_TREASURER') {
+      const isTreasurer = layout === 'SINGLE_TREASURER';
+      const sigBoxW = 90;
+      const singleX = bodyX + (bodyW - sigBoxW) / 2;
+      const title = isTreasurer ? "TESOURARIA GERAL" : "DIRETORIA / DIRIGENTE";
+      const signerName = isTreasurer ? (receipt.treasurerName || 'Tesoureiro Geral') : (receipt.pastorName || 'Pr. Antônio Chaves Crus');
+
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+      doc.setLineWidth(0.25);
+      doc.roundedRect(singleX, sigY, sigBoxW, sigBoxH, 1.5, 1.5, 'FD');
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.roundedRect(singleX, sigY, sigBoxW, 3.8, 1.5, 1.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(5.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text(title, singleX + sigBoxW / 2, sigY + 2.7, { align: 'center' });
+
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.2);
+      doc.line(singleX + 8, sigY + 14, singleX + sigBoxW - 8, sigY + 14);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(signerName.toUpperCase(), singleX + sigBoxW / 2, sigY + 18, { align: 'center' });
+    } else {
+      const sigBoxW = (bodyW - 3) / 2;
+
+      // Tesouraria
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+      doc.setLineWidth(0.25);
+      doc.roundedRect(bodyX, sigY, sigBoxW, sigBoxH, 1.5, 1.5, 'FD');
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.roundedRect(bodyX, sigY, sigBoxW, 3.8, 1.5, 1.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(5.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("TESOURARIA GERAL", bodyX + sigBoxW / 2, sigY + 2.7, { align: 'center' });
+
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.2);
+      doc.line(bodyX + 5, sigY + 14, bodyX + sigBoxW - 5, sigY + 14);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text((receipt.treasurerName || 'Tesoureiro Geral').toUpperCase(), bodyX + sigBoxW / 2, sigY + 18, { align: 'center' });
+
+      // Diretoria
+      const sig2X = bodyX + sigBoxW + 3;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+      doc.setLineWidth(0.25);
+      doc.roundedRect(sig2X, sigY, sigBoxW, sigBoxH, 1.5, 1.5, 'FD');
+
+      doc.setFillColor(tealLight[0], tealLight[1], tealLight[2]);
+      doc.roundedRect(sig2X, sigY, sigBoxW, 3.8, 1.5, 1.5, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(5.5);
+      doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+      doc.text("DIRETORIA / DIRIGENTE", sig2X + sigBoxW / 2, sigY + 2.7, { align: 'center' });
+
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.2);
+      doc.line(sig2X + 5, sigY + 14, sig2X + sigBoxW - 5, sigY + 14);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text((receipt.pastorName || 'Pr. Antônio Chaves Crus').toUpperCase(), sig2X + sigBoxW / 2, sigY + 18, { align: 'center' });
+    }
+
+    // Slogan
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(5.5);
+    doc.setTextColor(tealDark[0], tealDark[1], tealDark[2]);
+    doc.text("ADGU - Gerando Vidas para o Reino!", startX + cardWidth / 2, startY + cardHeight - 1.2, { align: 'center' });
+  };
+
+  // ----------------------------------------------------
+  // EXPORTADORES PDF (A4 1 VIA GRANDE, A4 2 VIAS, A4 MULTI/3 VIAS, A5)
+  // ----------------------------------------------------
+  
+  // 1) Export PDF A4 - 1 Recibo Único Grande e Limpo (Sem Informações Extras)
+  const exportPDF_A4_Single = async (receipt: ReceiptRecord) => {
     const settings = await getSettings();
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }) as any;
-    const pageWidth = doc.internal.pageSize.getWidth(); // 210 mm
-    const startX = 12;
-    const cardW = pageWidth - 24; // 186 mm
-    const cardH = 135; // 135 mm (Spacious for official GOV.BR stamp box)
+    drawSingleViaLarge(doc, receipt, settings, signatureLayout);
+    const safeNum = receipt.number.replace(/[\/\\]/g, '-');
+    doc.save(`Recibo_ADGU_${safeNum}_A4_Grande.pdf`);
+  };
 
-    // Via 1: Top half
+  // 2) Export PDF A4 - 2 Vias (Padrão 2 Vias com Serrilhado de Corte)
+  const exportPDF_A4_2Vias = async (receipt: ReceiptRecord) => {
+    const settings = await getSettings();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }) as any;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const startX = 12;
+    const cardW = pageWidth - 24;
+    const cardH = 135;
+
+    // Via 1
     drawSingleVia(doc, receipt, startX, 7, cardW, cardH, '1ª Via - Igreja / Tesouraria', settings, signatureLayout);
 
-    // Cutting Guide / Serrilhado
+    // Linha de Corte
     const lineY = 148.5;
     doc.setDrawColor(180, 190, 205);
     doc.setLineDashPattern([2, 2], 0);
     doc.setLineWidth(0.3);
     doc.line(8, lineY, pageWidth - 8, lineY);
-    doc.setLineDashPattern([], 0); // reset
+    doc.setLineDashPattern([], 0);
 
     doc.setFont("helvetica", "italic");
     doc.setFontSize(6.5);
     doc.setTextColor(140, 155, 175);
     doc.text("- - - - - - - - - - - - - - - - - - - - -  ✂  Destaque / Corte Aqui  - - - - - - - - - - - - - - - - - - - - -", pageWidth / 2, lineY - 1, { align: 'center' });
 
-    // Via 2: Bottom half
+    // Via 2
     drawSingleVia(doc, receipt, startX, 155, cardW, cardH, receipt.type === 'DESPESA' ? '2ª Via - Favorecido' : receipt.type === 'MEMBRO' ? '2ª Via - Membro / Dizimista' : '2ª Via - Arquivo Geral', settings, signatureLayout);
 
     const safeNum = receipt.number.replace(/[\/\\]/g, '-');
     doc.save(`Recibo_ADGU_${safeNum}_A4_2Vias.pdf`);
   };
 
-  // Export PDF A5 (1 Via Paisagem com Calibração GOV.BR)
+  // 3) Export PDF A4 - Folha A4 Preenchida com 3 Recibos (Econômico / Multi)
+  const exportPDF_A4_3Vias = async (receipt: ReceiptRecord) => {
+    const settings = await getSettings();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }) as any;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const startX = 12;
+    const cardW = pageWidth - 24;
+    const cardH = 88;
+
+    const labels = [
+      '1ª Via - Igreja / Tesouraria',
+      receipt.type === 'DESPESA' ? '2ª Via - Favorecido' : receipt.type === 'MEMBRO' ? '2ª Via - Membro' : '2ª Via - Secretaria',
+      '3ª Via - Arquivo Geral / Canhoto'
+    ];
+
+    const yOffsets = [7, 103, 199];
+    const cutY = [99, 195];
+
+    yOffsets.forEach((y, i) => {
+      drawSingleViaCompact(doc, receipt, startX, y, cardW, cardH, labels[i], settings, signatureLayout);
+    });
+
+    cutY.forEach(y => {
+      doc.setDrawColor(180, 190, 205);
+      doc.setLineDashPattern([2, 2], 0);
+      doc.setLineWidth(0.3);
+      doc.line(8, y, pageWidth - 8, y);
+      doc.setLineDashPattern([], 0);
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(6);
+      doc.setTextColor(140, 155, 175);
+      doc.text("- - - - - - - - - - - - - - - - -  ✂  Corte Aqui  - - - - - - - - - - - - - - - -", pageWidth / 2, y - 1, { align: 'center' });
+    });
+
+    const safeNum = receipt.number.replace(/[\/\\]/g, '-');
+    doc.save(`Recibo_ADGU_${safeNum}_A4_3Vias.pdf`);
+  };
+
+  // 4) Export PDF A4 - Vários Recibos Selecionados Preenchendo Folhas A4 (3 por folha)
+  const exportPDF_A4_Multi = async (receiptList: ReceiptRecord[]) => {
+    if (receiptList.length === 0) return;
+    const settings = await getSettings();
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }) as any;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const startX = 12;
+    const cardW = pageWidth - 24;
+    const cardH = 88;
+    const yOffsets = [7, 103, 199];
+    const cutY = [99, 195];
+
+    for (let i = 0; i < receiptList.length; i++) {
+      const pageIndex = Math.floor(i / 3);
+      const slotIndex = i % 3;
+
+      if (slotIndex === 0 && pageIndex > 0) {
+        doc.addPage();
+      }
+
+      const r = receiptList[i];
+      const slotY = yOffsets[slotIndex];
+      drawSingleViaCompact(doc, r, startX, slotY, cardW, cardH, 'Via Contábil Oficial', settings, signatureLayout);
+
+      if (slotIndex < 2 && i + 1 < receiptList.length) {
+        const cy = cutY[slotIndex];
+        doc.setDrawColor(180, 190, 205);
+        doc.setLineDashPattern([2, 2], 0);
+        doc.setLineWidth(0.3);
+        doc.line(8, cy, pageWidth - 8, cy);
+        doc.setLineDashPattern([], 0);
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(6);
+        doc.setTextColor(140, 155, 175);
+        doc.text("- - - - - - - - - - - - - - - - -  ✂  Corte Aqui  - - - - - - - - - - - - - - - -", pageWidth / 2, cy - 1, { align: 'center' });
+      }
+    }
+
+    doc.save(`Recibos_ADGU_Lote_${receiptList.length}_A4.pdf`);
+  };
+
+  // 5) Export PDF A5 (1 Via Paisagem)
   const exportPDF_A5 = async (receipt: ReceiptRecord) => {
     const settings = await getSettings();
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a5' }) as any;
-    const pageWidth = doc.internal.pageSize.getWidth(); // 210 mm
+    const pageWidth = doc.internal.pageSize.getWidth();
     const startX = 12;
-    const cardW = pageWidth - 24; // 186 mm
+    const cardW = pageWidth - 24;
     const cardH = 135;
 
     drawSingleVia(doc, receipt, startX, 6.5, cardW, cardH, 'Via Única Oficial', settings, signatureLayout);
@@ -771,36 +1561,68 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
     doc.save(`Recibo_ADGU_${safeNum}_A5.pdf`);
   };
 
-  // WhatsApp Summary Copy
-  const handleCopyWhatsApp = () => {
-    const current = getCurrentReceiptData();
-    const formattedDate = new Date(current.date + 'T12:00:00').toLocaleDateString('pt-BR');
+  // ----------------------------------------------------
+  // INTEGRAÇÃO WHATSAPP (MANDAR PARA WHATSAPP / COPIAR)
+  // ----------------------------------------------------
+  const buildWhatsAppText = (receipt: ReceiptRecord): string => {
+    const formattedDate = new Date(receipt.date + 'T12:00:00').toLocaleDateString('pt-BR');
     
     let text = `🏛️ *ASSEMBLÉIA DE DEUS GERAÇÃO UNIDA*\n`;
-    text += `📋 *${current.type === 'RECEITA' ? 'RECEITA DIÁRIA' : current.type === 'MEMBRO' ? 'RECIBO DE DIZIMISTA' : 'RECIBO DE PAGAMENTO'}* - Nº ${current.number}\n`;
-    text += `📍 *Congregação:* ${current.institutionName}\n`;
-    text += `📅 *Data:* ${formattedDate} (${current.city})\n`;
-    text += `💰 *Valor Total:* ${formatBRL(current.amount)}\n`;
-    text += `📝 *Por Extenso:* ${valorPorExtenso(current.amount)}\n`;
+    text += `📋 *${receipt.type === 'RECEITA' ? 'RECEITA DIÁRIA' : receipt.type === 'MEMBRO' ? 'RECIBO DE DIZIMISTA / MEMBRO' : 'RECIBO DE PAGAMENTO'}*\n`;
+    text += `🔢 *Nº:* ${receipt.number}\n`;
+    text += `📍 *Congregação:* ${receipt.institutionName}\n`;
+    text += `📅 *Data:* ${formattedDate} (${receipt.city || 'Maracanaú - CE'})\n`;
+    text += `💰 *Valor Total:* ${formatBRL(receipt.amount)}\n`;
+    text += `📝 *Por Extenso:* ${valorPorExtenso(receipt.amount)}\n`;
 
-    if (current.type === 'RECEITA') {
+    if (receipt.type === 'RECEITA') {
       text += `\n*Detalhamento de Entradas:*\n`;
-      text += `• Dízimos: ${formatBRL(current.tithes || 0)}\n`;
-      text += `• Ofertas: ${formatBRL(current.offerings || 0)}\n`;
-      text += `• Especial: ${formatBRL(current.specialOfferings || 0)}\n`;
+      text += `• Dízimos: ${formatBRL(receipt.tithes || 0)}\n`;
+      text += `• Ofertas: ${formatBRL(receipt.offerings || 0)}\n`;
+      text += `• Especial: ${formatBRL(receipt.specialOfferings || 0)}\n`;
     } else {
-      text += `👤 *${current.type === 'MEMBRO' ? 'Membro / Dizimista' : 'Favorecido'}:* ${current.personName}\n`;
-      if (current.docNumber) text += `📄 *CPF/CNPJ:* ${current.docNumber}\n`;
-      text += `📌 *Referente a:* ${current.description}\n`;
+      text += `👤 *${receipt.type === 'MEMBRO' ? 'Membro / Dizimista' : 'Favorecido'}:* ${receipt.personName}\n`;
+      if (receipt.docNumber) text += `📄 *CPF/CNPJ:* ${receipt.docNumber}\n`;
+      text += `📌 *Referente a:* ${receipt.description}\n`;
     }
 
-    text += `\n✍️ *Tesouraria:* ${current.treasurerName} (${current.treasurerRole})\n`;
-    text += `✍️ *Diretoria:* ${current.pastorName} (${current.pastorRole})\n`;
+    text += `\n✍️ *Tesouraria:* ${receipt.treasurerName} (${receipt.treasurerRole || 'Tesoureiro Geral'})\n`;
+    text += `✍️ *Diretoria:* ${receipt.pastorName} (${receipt.pastorRole || 'Pastor Presidente / Dirigente'})\n`;
     text += `\n_ADGU - Gerando Vidas para o Reino!_`;
 
+    return text;
+  };
+
+  const handleSendWhatsApp = (receipt: ReceiptRecord) => {
+    const text = buildWhatsAppText(receipt);
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
     navigator.clipboard.writeText(text);
     setCopiedWhatsApp(true);
     setTimeout(() => setCopiedWhatsApp(false), 3000);
+  };
+
+  const handleCopyWhatsApp = (receipt?: ReceiptRecord) => {
+    const current = receipt || viewingReceiptModal || getCurrentReceiptData();
+    const text = buildWhatsAppText(current);
+    navigator.clipboard.writeText(text);
+    setCopiedWhatsApp(true);
+    setTimeout(() => setCopiedWhatsApp(false), 3000);
+  };
+
+  // ----------------------------------------------------
+  // IMPRESSÃO NATIVA DO NAVEGADOR
+  // ----------------------------------------------------
+  const handlePrint = (mode: 'SINGLE' | '2VIAS' | 'MULTI', target?: ReceiptRecord, multi?: ReceiptRecord[]) => {
+    setPrintMode(mode);
+    if (target) setSelectedReceiptForPreview(target);
+    if (multi && multi.length > 0) setMultiPrintList(multi);
+    else if (target) setMultiPrintList([target, target, target]);
+    else setMultiPrintList([getCurrentReceiptData(), getCurrentReceiptData(), getCurrentReceiptData()]);
+
+    setTimeout(() => {
+      window.print();
+    }, 150);
   };
 
   const filteredReceipts = receipts
@@ -813,200 +1635,220 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
   const activeReceipt = getCurrentReceiptData();
   const dateFormattedPreview = new Date(activeReceipt.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
 
+  // Helper to render visual receipt card in print, modal, and live preview
+  const renderCard = (
+    rec: ReceiptRecord,
+    viaLabel: string,
+    size: 'LARGE' | 'NORMAL' | 'COMPACT' = 'LARGE'
+  ) => {
+    const formattedDate = new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const isLarge = size === 'LARGE';
+    const isCompact = size === 'COMPACT';
+
+    return (
+      <div className={`border-2 border-slate-300 rounded-2xl bg-white relative overflow-hidden ${isLarge ? 'p-6 sm:p-8 space-y-5 shadow-sm' : isCompact ? 'p-3 space-y-2' : 'p-4 sm:p-5 space-y-3.5'}`}>
+        {/* Top Teal Stripe */}
+        <div className={`bg-teal-700 ${isLarge ? 'h-2.5 -mx-8 -mt-8 mb-5' : isCompact ? 'h-1.5 -mx-4 -mt-4 mb-2' : 'h-2 -mx-6 -mt-6 mb-3'}`} />
+
+        {/* Header */}
+        <div className="flex justify-between items-start border-b border-slate-200 pb-3 gap-3">
+          <div className="flex items-center gap-3">
+            {churchSettings?.logo ? (
+              <img src={churchSettings.logo} className={`object-contain rounded-lg shrink-0 ${isLarge ? 'w-14 h-14 sm:w-16 sm:h-16' : isCompact ? 'w-9 h-9' : 'w-12 h-12'}`} alt="Logo" />
+            ) : (
+              <div className={`bg-teal-700 text-white rounded-xl flex items-center justify-center font-black shrink-0 ${isLarge ? 'w-14 h-14 text-sm' : isCompact ? 'w-9 h-9 text-[10px]' : 'w-12 h-12 text-xs'}`}>
+                ADGU
+              </div>
+            )}
+            <div>
+              <h3 className={`font-black text-slate-900 uppercase tracking-tight leading-tight ${isLarge ? 'text-base sm:text-lg' : isCompact ? 'text-xs' : 'text-sm'}`}>
+                {churchSettings?.institutionName || 'Assembléia de Deus Geração Unida'}
+              </h3>
+              <p className={`text-slate-600 font-bold ${isLarge ? 'text-xs' : 'text-[10px]'}`}>
+                CNPJ: {churchSettings?.cnpj || '49.386.673/0001-10'} | Ministério ADGU
+              </p>
+              <p className={`text-slate-500 ${isLarge ? 'text-xs' : 'text-[9px]'}`}>
+                {churchSettings?.address || 'Rua 12 de Outubro, 779 - Parque Tijuca - Maracanaú - CE'}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right space-y-1.5 shrink-0">
+            <div className={`bg-teal-50 border border-teal-200 rounded-lg text-right ${isLarge ? 'px-3.5 py-1.5' : 'px-2 py-1'}`}>
+              <span className={`font-black text-teal-900 uppercase block ${isLarge ? 'text-xs' : 'text-[9px]'}`}>{rec.number}</span>
+              <span className={`text-slate-500 font-bold block ${isLarge ? 'text-[10px]' : 'text-[8px]'}`}>{viaLabel.toUpperCase()}</span>
+            </div>
+            <div className={`bg-teal-700 text-white rounded-lg text-right ${isLarge ? 'px-4 py-2' : 'px-2.5 py-1'}`}>
+              <span className={`font-bold uppercase block text-teal-200 ${isLarge ? 'text-[9px]' : 'text-[8px]'}`}>VALOR TOTAL</span>
+              <span className={`font-black block leading-none ${isLarge ? 'text-xl sm:text-2xl text-white' : 'text-sm text-white'}`}>{formatBRL(rec.amount)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Body */}
+        {rec.type === 'RECEITA' ? (
+          <div className={`space-y-3 ${isCompact ? 'space-y-1.5' : 'space-y-3'}`}>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className={`p-2.5 border border-slate-200 rounded-xl bg-slate-50/60 ${isLarge ? 'text-xs' : 'text-[10px]'}`}>
+                <span className="text-[9px] font-black text-slate-400 block uppercase">Congregação</span>
+                <span className="font-black text-slate-900">{rec.institutionName}</span>
+              </div>
+              <div className={`p-2.5 bg-teal-50 border border-teal-100 rounded-xl ${isLarge ? 'text-xs' : 'text-[10px]'}`}>
+                <span className="text-[9px] font-black text-teal-700 block uppercase">Data do Culto / Local</span>
+                <span className="font-black text-teal-950">{rec.city || 'Maracanaú - CE'}, {formattedDate}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className={`border-2 border-emerald-100 bg-emerald-50/50 rounded-xl ${isLarge ? 'p-3' : isCompact ? 'p-1.5' : 'p-2'}`}>
+                <span className={`font-black text-emerald-800 uppercase block ${isLarge ? 'text-[10px]' : 'text-[8px]'}`}>1. DÍZIMOS</span>
+                <span className={`font-black text-slate-900 block ${isLarge ? 'text-xl sm:text-2xl mt-1' : isCompact ? 'text-xs' : 'text-sm'}`}>{formatBRL(rec.tithes || 0)}</span>
+              </div>
+              <div className={`border-2 border-teal-100 bg-teal-50/50 rounded-xl ${isLarge ? 'p-3' : isCompact ? 'p-1.5' : 'p-2'}`}>
+                <span className={`font-black text-teal-800 uppercase block ${isLarge ? 'text-[10px]' : 'text-[8px]'}`}>2. OFERTAS</span>
+                <span className={`font-black text-slate-900 block ${isLarge ? 'text-xl sm:text-2xl mt-1' : isCompact ? 'text-xs' : 'text-sm'}`}>{formatBRL(rec.offerings || 0)}</span>
+              </div>
+              <div className={`border-2 border-amber-100 bg-amber-50/50 rounded-xl ${isLarge ? 'p-3' : isCompact ? 'p-1.5' : 'p-2'}`}>
+                <span className={`font-black text-amber-800 uppercase block ${isLarge ? 'text-[10px]' : 'text-[8px]'}`}>3. ESPECIAL</span>
+                <span className={`font-black text-slate-900 block ${isLarge ? 'text-xl sm:text-2xl mt-1' : isCompact ? 'text-xs' : 'text-sm'}`}>{formatBRL(rec.specialOfferings || 0)}</span>
+              </div>
+            </div>
+
+            <div className={`bg-gradient-to-r from-teal-50 via-teal-100/60 to-emerald-50 border border-teal-200 rounded-xl ${isLarge ? 'p-3.5 space-y-1' : 'p-2 space-y-0.5'}`}>
+              <div className="flex justify-between items-center">
+                <span className={`font-black text-teal-950 uppercase ${isLarge ? 'text-xs' : 'text-[9px]'}`}>VALOR TOTAL DA RECEITA DIÁRIA</span>
+                <span className={`font-black text-teal-950 ${isLarge ? 'text-lg' : 'text-xs'}`}>{formatBRL(rec.amount)}</span>
+              </div>
+              <p className={`text-teal-900 font-bold italic leading-tight ${isLarge ? 'text-xs' : 'text-[9px]'}`}>
+                ({valorPorExtenso(rec.amount)})
+              </p>
+            </div>
+
+            {rec.description && (
+              <div className={`p-2 border border-slate-100 rounded-lg text-slate-600 bg-slate-50/60 ${isLarge ? 'text-xs' : 'text-[9px]'}`}>
+                <strong>Obs:</strong> {rec.description}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className={`space-y-2.5 ${isCompact ? 'space-y-1' : 'space-y-2.5'}`}>
+            <div className={`border border-slate-200 rounded-xl bg-white ${isLarge ? 'p-3' : 'p-2'}`}>
+              <span className={`font-bold text-slate-400 block uppercase ${isLarge ? 'text-[10px]' : 'text-[8px]'}`}>
+                {rec.type === 'MEMBRO' ? 'Recebemos do(a) irmão(ã)' : 'Paguei(amos) a'}
+              </span>
+              <span className={`font-black text-slate-900 block ${isLarge ? 'text-sm sm:text-base' : 'text-xs'}`}>
+                {rec.personName} {rec.docNumber && `(CPF/CNPJ: ${rec.docNumber})`}
+              </span>
+            </div>
+
+            <div className={`bg-teal-50/80 border border-teal-100 rounded-xl ${isLarge ? 'p-3' : 'p-2'}`}>
+              <span className={`font-bold text-teal-700 block uppercase ${isLarge ? 'text-[10px]' : 'text-[8px]'}`}>a importância de</span>
+              <span className={`font-black text-teal-950 block ${isLarge ? 'text-sm sm:text-base' : 'text-xs'}`}>
+                {formatBRL(rec.amount)} ({valorPorExtenso(rec.amount)})
+              </span>
+            </div>
+
+            <div className={`border border-slate-200 rounded-xl bg-white ${isLarge ? 'p-3' : 'p-2'}`}>
+              <span className={`font-bold text-slate-400 block uppercase ${isLarge ? 'text-[10px]' : 'text-[8px]'}`}>referente a</span>
+              <span className={`font-bold text-slate-800 block ${isLarge ? 'text-xs sm:text-sm' : 'text-[11px]'}`}>{rec.description}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className={`border border-slate-200 rounded-xl bg-slate-50/50 ${isLarge ? 'p-2.5 text-xs' : 'p-1.5 text-[10px]'}`}>
+                <span className="text-[8px] font-bold text-slate-400 uppercase block">Congregação</span>
+                <span className="font-bold text-slate-800">{rec.institutionName}</span>
+              </div>
+              <div className={`bg-teal-50 rounded-xl border border-teal-100 ${isLarge ? 'p-2.5 text-xs' : 'p-1.5 text-[10px]'}`}>
+                <span className="text-[8px] font-bold text-teal-700 uppercase block">Local e Data</span>
+                <span className="font-bold text-teal-950">{rec.city || 'Maracanaú - CE'}, {formattedDate}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Signatures */}
+        {signatureLayout === 'SINGLE_PASTOR' || signatureLayout === 'SINGLE_TREASURER' ? (
+          <div className={`pt-2 max-w-md mx-auto text-center ${isCompact ? 'pt-1' : 'pt-2'}`}>
+            <div className={`p-3 bg-white rounded-2xl border-2 border-slate-200 flex flex-col justify-between ${isLarge ? 'min-h-[160px]' : isCompact ? 'min-h-[80px]' : 'min-h-[120px]'}`}>
+              <span className="text-[9px] font-black text-teal-800 uppercase tracking-wider block">
+                {signatureLayout === 'SINGLE_TREASURER' ? 'TESOURARIA GERAL' : 'DIRETORIA / DIRIGENTE RESPONSÁVEL'}
+              </span>
+              <div className={`bg-white ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`} />
+              <div className="w-4/5 mx-auto border-b-2 border-slate-700 mb-1" />
+              <span className={`font-black text-slate-900 uppercase block ${isLarge ? 'text-sm' : 'text-xs'}`}>
+                {signatureLayout === 'SINGLE_TREASURER' ? rec.treasurerName : rec.pastorName}
+              </span>
+              <span className="text-[9px] text-slate-500 font-medium block">
+                {signatureLayout === 'SINGLE_TREASURER' ? rec.treasurerRole : rec.pastorRole}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className={`grid grid-cols-2 gap-3 text-center ${isCompact ? 'pt-1 gap-2' : 'pt-2'}`}>
+            <div className={`bg-white rounded-2xl border-2 border-slate-200 flex flex-col justify-between ${isLarge ? 'p-3.5 min-h-[160px]' : isCompact ? 'p-1.5 min-h-[80px]' : 'p-2.5 min-h-[120px]'}`}>
+              <span className="text-[8px] font-black text-teal-800 uppercase tracking-wider block">TESOURARIA GERAL</span>
+              <div className={`bg-white ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`} />
+              <div className="w-full border-b border-slate-500 mb-1" />
+              <span className={`font-black text-slate-900 leading-tight block ${isLarge ? 'text-xs' : 'text-[10px]'}`}>{rec.treasurerName.toUpperCase()}</span>
+              <span className="text-[8px] text-slate-500 font-medium block">{rec.treasurerRole}</span>
+            </div>
+
+            <div className={`bg-white rounded-2xl border-2 border-slate-200 flex flex-col justify-between ${isLarge ? 'p-3.5 min-h-[160px]' : isCompact ? 'p-1.5 min-h-[80px]' : 'p-2.5 min-h-[120px]'}`}>
+              <span className="text-[8px] font-black text-teal-800 uppercase tracking-wider block">DIRETORIA / DIRIGENTE</span>
+              <div className={`bg-white ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`} />
+              <div className="w-full border-b border-slate-500 mb-1" />
+              <span className={`font-black text-slate-900 leading-tight block ${isLarge ? 'text-xs' : 'text-[10px]'}`}>{rec.pastorName.toUpperCase()}</span>
+              <span className="text-[8px] text-slate-500 font-medium block">{rec.pastorRole}</span>
+            </div>
+          </div>
+        )}
+
+        <p className="text-center text-[9px] font-black text-teal-800 pt-1 tracking-wider uppercase">
+          ADGU - Gerando Vidas para o Reino!
+        </p>
+      </div>
+    );
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       
       {/* Printable Area Hook for Native Browser Print (@media print in index.css) */}
-      <div id="printable-receipt-area" className="hidden print:block p-4 bg-white text-slate-900 font-sans">
-        {/* Render 2 Vias on Print */}
-        <div className="space-y-6">
-          {/* VIA 1 */}
-          <div className="border-2 border-slate-300 rounded-2xl p-5 bg-white space-y-4">
-            <div className="flex justify-between items-start border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-3">
-                {churchSettings?.logo ? (
-                  <img src={churchSettings.logo} className="w-14 h-14 object-contain" alt="Logo" />
-                ) : (
-                  <div className="w-12 h-12 bg-teal-700 text-white rounded-xl flex items-center justify-center font-black text-sm">ADGU</div>
-                )}
-                <div>
-                  <h3 className="text-base font-black text-slate-900 uppercase">{churchSettings?.institutionName || 'Assembléia de Deus Geração Unida'}</h3>
-                  <p className="text-[10px] text-slate-500 font-semibold">CNPJ: {churchSettings?.cnpj || '49.386.673/0001-10'} | Ministério ADGU</p>
-                  <p className="text-[10px] text-slate-500">{churchSettings?.address || 'Rua 12 de Outubro, 779 - Parque Tijuca - Maracanaú - CE'}</p>
-                </div>
-              </div>
-              <div className="text-right space-y-1">
-                <div className="bg-teal-50 border border-teal-200 px-3 py-1 rounded-lg text-xs font-black text-teal-900">
-                  {activeReceipt.number} <span className="text-[9px] font-normal text-slate-500 block">1ª VIA - IGREJA</span>
-                </div>
-                <div className="bg-teal-700 text-white px-3 py-1 rounded-lg text-xs font-black">
-                  TOTAL: {formatBRL(activeReceipt.amount)}
-                </div>
-              </div>
+      <div id="printable-receipt-area" className="hidden print:block p-2 bg-white text-slate-900 font-sans">
+        {printMode === 'SINGLE' && (
+          <div>
+            {renderCard(activeReceipt, 'VIA ÚNICA OFICIAL', 'LARGE')}
+          </div>
+        )}
+
+        {printMode === '2VIAS' && (
+          <div className="space-y-6">
+            {renderCard(activeReceipt, '1ª VIA - IGREJA / TESOURARIA', 'NORMAL')}
+            <div className="text-center text-xs text-slate-400 border-b border-dashed border-slate-400 py-1 select-none">
+              - - - - - - - - - - - - - - - - - - - - ✂ Destaque / Corte Aqui - - - - - - - - - - - - - - - - - - - -
             </div>
-
-            {/* Print Body */}
-            {activeReceipt.type === 'RECEITA' ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2 border border-slate-200 rounded-lg"><strong>CONGREGAÇÃO:</strong> {activeReceipt.institutionName}</div>
-                  <div className="p-2 bg-teal-50 rounded-lg"><strong>DATA:</strong> {activeReceipt.city}, {dateFormattedPreview}</div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="p-2 border border-slate-200 rounded-lg"><span className="text-[10px] font-bold text-slate-500 block">DÍZIMOS</span><span className="text-sm font-black">{formatBRL(activeReceipt.tithes || 0)}</span></div>
-                  <div className="p-2 border border-slate-200 rounded-lg"><span className="text-[10px] font-bold text-slate-500 block">OFERTAS</span><span className="text-sm font-black">{formatBRL(activeReceipt.offerings || 0)}</span></div>
-                  <div className="p-2 border border-slate-200 rounded-lg"><span className="text-[10px] font-bold text-slate-500 block">OFERTA ESPECIAL</span><span className="text-sm font-black">{formatBRL(activeReceipt.specialOfferings || 0)}</span></div>
-                </div>
-                <div className="p-2.5 bg-teal-50 rounded-lg text-xs font-bold text-slate-800">
-                  TOTAL RECEITA: {formatBRL(activeReceipt.amount)} ({valorPorExtenso(activeReceipt.amount)})
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2 text-xs">
-                <div className="p-2 border border-slate-200 rounded-lg"><strong>{activeReceipt.type === 'MEMBRO' ? 'Recebemos do(a) irmão(ã):' : 'Paguei(amos) a:'}</strong> {activeReceipt.personName} {activeReceipt.docNumber && `(CPF/CNPJ: ${activeReceipt.docNumber})`}</div>
-                <div className="p-2 bg-teal-50 rounded-lg"><strong>A quantia de:</strong> {formatBRL(activeReceipt.amount)} ({valorPorExtenso(activeReceipt.amount)})</div>
-                <div className="p-2 border border-slate-200 rounded-lg"><strong>Referente a:</strong> {activeReceipt.description}</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="p-1.5 border border-slate-200 rounded-lg"><strong>Congregação:</strong> {activeReceipt.institutionName}</div>
-                  <div className="p-1.5 bg-teal-50 rounded-lg"><strong>Local/Data:</strong> {activeReceipt.city}, {dateFormattedPreview}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Print Signatures - Área em Branco para Assinatura */}
-            {signatureLayout === 'SINGLE_PASTOR' || signatureLayout === 'SINGLE_TREASURER' ? (
-              <div className="pt-2 max-w-sm mx-auto text-center">
-                <div className="border border-slate-200 rounded-xl p-3 bg-white space-y-2">
-                  <span className="text-[9px] font-black uppercase text-teal-800 block">
-                    {signatureLayout === 'SINGLE_TREASURER' ? 'Tesouraria Geral' : 'Diretoria / Dirigente Responsável'}
-                  </span>
-                  <div className="h-20 bg-white" />
-                  <div className="border-b border-slate-400 w-4/5 mx-auto" />
-                  <span className="text-xs font-black text-slate-900 block">
-                    {signatureLayout === 'SINGLE_TREASURER' ? activeReceipt.treasurerName : activeReceipt.pastorName}
-                  </span>
-                  <span className="text-[9px] text-slate-500 font-semibold block">
-                    {signatureLayout === 'SINGLE_TREASURER' ? activeReceipt.treasurerRole : activeReceipt.pastorRole}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <div className="border border-slate-200 rounded-xl p-2.5 text-center space-y-1.5 bg-white">
-                  <span className="text-[9px] font-black uppercase text-teal-800 block">Tesouraria Geral</span>
-                  <div className="h-20 bg-white" />
-                  <div className="border-b border-slate-400 w-4/5 mx-auto" />
-                  <span className="text-xs font-black text-slate-900 block">{activeReceipt.treasurerName}</span>
-                  <span className="text-[9px] text-slate-500 font-semibold block">{activeReceipt.treasurerRole}</span>
-                </div>
-                <div className="border border-slate-200 rounded-xl p-2.5 text-center space-y-1.5 bg-white">
-                  <span className="text-[9px] font-black uppercase text-teal-800 block">Diretoria / Dirigente</span>
-                  <div className="h-20 bg-white" />
-                  <div className="border-b border-slate-400 w-4/5 mx-auto" />
-                  <span className="text-xs font-black text-slate-900 block">{activeReceipt.pastorName}</span>
-                  <span className="text-[9px] text-slate-500 font-semibold block">{activeReceipt.pastorRole}</span>
-                </div>
-              </div>
-            )}
-            <p className="text-center text-[10px] font-bold text-teal-800 pt-1">ADGU - Gerando Vidas para o Reino!</p>
+            {renderCard(activeReceipt, activeReceipt.type === 'DESPESA' ? '2ª VIA - FAVORECIDO' : activeReceipt.type === 'MEMBRO' ? '2ª VIA - MEMBRO' : '2ª VIA - ARQUIVO', 'NORMAL')}
           </div>
+        )}
 
-          {/* SERRILHADO CORTE */}
-          <div className="text-center text-xs text-slate-400 border-b border-dashed border-slate-400 py-1 select-none">
-            - - - - - - - - - - - - - - - - - - - - ✂ Destaque / Corte Aqui - - - - - - - - - - - - - - - - - - - -
+        {printMode === 'MULTI' && (
+          <div className="space-y-4">
+            {multiPrintList.map((rec, index) => {
+              const isPageBreak = index > 0 && index % 3 === 0;
+              return (
+                <React.Fragment key={`${rec.id}-${index}`}>
+                  {isPageBreak && <div style={{ pageBreakAfter: 'always' }} />}
+                  {renderCard(rec, `VIA CONTÁBIL #${index + 1}`, 'COMPACT')}
+                  {index % 3 < 2 && index < multiPrintList.length - 1 && (
+                    <div className="text-center text-[10px] text-slate-400 border-b border-dashed border-slate-400 py-0.5 select-none">
+                      - - - - - - - - - - - - ✂ Corte Aqui - - - - - - - - - - - -
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
-
-          {/* VIA 2 */}
-          <div className="border-2 border-slate-300 rounded-2xl p-5 bg-white space-y-4">
-            <div className="flex justify-between items-start border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-3">
-                {churchSettings?.logo ? (
-                  <img src={churchSettings.logo} className="w-14 h-14 object-contain" alt="Logo" />
-                ) : (
-                  <div className="w-12 h-12 bg-teal-700 text-white rounded-xl flex items-center justify-center font-black text-sm">ADGU</div>
-                )}
-                <div>
-                  <h3 className="text-base font-black text-slate-900 uppercase">{churchSettings?.institutionName || 'Assembléia de Deus Geração Unida'}</h3>
-                  <p className="text-[10px] text-slate-500 font-semibold">CNPJ: {churchSettings?.cnpj || '49.386.673/0001-10'} | Ministério ADGU</p>
-                  <p className="text-[10px] text-slate-500">{churchSettings?.address || 'Rua 12 de Outubro, 779 - Parque Tijuca - Maracanaú - CE'}</p>
-                </div>
-              </div>
-              <div className="text-right space-y-1">
-                <div className="bg-teal-50 border border-teal-200 px-3 py-1 rounded-lg text-xs font-black text-teal-900">
-                  {activeReceipt.number} <span className="text-[9px] font-normal text-slate-500 block">2ª VIA - {activeReceipt.type === 'DESPESA' ? 'FAVORECIDO' : activeReceipt.type === 'MEMBRO' ? 'MEMBRO' : 'ARQUIVO'}</span>
-                </div>
-                <div className="bg-teal-700 text-white px-3 py-1 rounded-lg text-xs font-black">
-                  TOTAL: {formatBRL(activeReceipt.amount)}
-                </div>
-              </div>
-            </div>
-
-            {/* Print Body Via 2 */}
-            {activeReceipt.type === 'RECEITA' ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2 border border-slate-200 rounded-lg"><strong>CONGREGAÇÃO:</strong> {activeReceipt.institutionName}</div>
-                  <div className="p-2 bg-teal-50 rounded-lg"><strong>DATA:</strong> {activeReceipt.city}, {dateFormattedPreview}</div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="p-2 border border-slate-200 rounded-lg"><span className="text-[10px] font-bold text-slate-500 block">DÍZIMOS</span><span className="text-sm font-black">{formatBRL(activeReceipt.tithes || 0)}</span></div>
-                  <div className="p-2 border border-slate-200 rounded-lg"><span className="text-[10px] font-bold text-slate-500 block">OFERTAS</span><span className="text-sm font-black">{formatBRL(activeReceipt.offerings || 0)}</span></div>
-                  <div className="p-2 border border-slate-200 rounded-lg"><span className="text-[10px] font-bold text-slate-500 block">OFERTA ESPECIAL</span><span className="text-sm font-black">{formatBRL(activeReceipt.specialOfferings || 0)}</span></div>
-                </div>
-                <div className="p-2.5 bg-teal-50 rounded-lg text-xs font-bold text-slate-800">
-                  TOTAL RECEITA: {formatBRL(activeReceipt.amount)} ({valorPorExtenso(activeReceipt.amount)})
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2 text-xs">
-                <div className="p-2 border border-slate-200 rounded-lg"><strong>{activeReceipt.type === 'MEMBRO' ? 'Recebemos do(a) irmão(ã):' : 'Paguei(amos) a:'}</strong> {activeReceipt.personName} {activeReceipt.docNumber && `(CPF/CNPJ: ${activeReceipt.docNumber})`}</div>
-                <div className="p-2 bg-teal-50 rounded-lg"><strong>A quantia de:</strong> {formatBRL(activeReceipt.amount)} ({valorPorExtenso(activeReceipt.amount)})</div>
-                <div className="p-2 border border-slate-200 rounded-lg"><strong>Referente a:</strong> {activeReceipt.description}</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="p-1.5 border border-slate-200 rounded-lg"><strong>Congregação:</strong> {activeReceipt.institutionName}</div>
-                  <div className="p-1.5 bg-teal-50 rounded-lg"><strong>Local/Data:</strong> {activeReceipt.city}, {dateFormattedPreview}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Print Signatures Via 2 - Área em Branco para Assinatura */}
-            {signatureLayout === 'SINGLE_PASTOR' || signatureLayout === 'SINGLE_TREASURER' ? (
-              <div className="pt-2 max-w-sm mx-auto text-center">
-                <div className="border border-slate-200 rounded-xl p-3 bg-white space-y-2">
-                  <span className="text-[9px] font-black uppercase text-teal-800 block">
-                    {signatureLayout === 'SINGLE_TREASURER' ? 'Tesouraria Geral' : 'Diretoria / Dirigente Responsável'}
-                  </span>
-                  <div className="h-20 bg-white" />
-                  <div className="border-b border-slate-400 w-4/5 mx-auto" />
-                  <span className="text-xs font-black text-slate-900 block">
-                    {signatureLayout === 'SINGLE_TREASURER' ? activeReceipt.treasurerName : activeReceipt.pastorName}
-                  </span>
-                  <span className="text-[9px] text-slate-500 font-semibold block">
-                    {signatureLayout === 'SINGLE_TREASURER' ? activeReceipt.treasurerRole : activeReceipt.pastorRole}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <div className="border border-slate-200 rounded-xl p-2.5 text-center space-y-1.5 bg-white">
-                  <span className="text-[9px] font-black uppercase text-teal-800 block">Tesouraria Geral</span>
-                  <div className="h-20 bg-white" />
-                  <div className="border-b border-slate-400 w-4/5 mx-auto" />
-                  <span className="text-xs font-black text-slate-900 block">{activeReceipt.treasurerName}</span>
-                  <span className="text-[9px] text-slate-500 font-semibold block">{activeReceipt.treasurerRole}</span>
-                </div>
-                <div className="border border-slate-200 rounded-xl p-2.5 text-center space-y-1.5 bg-white">
-                  <span className="text-[9px] font-black uppercase text-teal-800 block">Diretoria / Dirigente</span>
-                  <div className="h-20 bg-white" />
-                  <div className="border-b border-slate-400 w-4/5 mx-auto" />
-                  <span className="text-xs font-black text-slate-900 block">{activeReceipt.pastorName}</span>
-                  <span className="text-[9px] text-slate-500 font-semibold block">{activeReceipt.pastorRole}</span>
-                </div>
-              </div>
-            )}
-            <p className="text-center text-[10px] font-bold text-teal-800 pt-1">ADGU - Gerando Vidas para o Reino!</p>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Screen Header Banner */}
@@ -1057,58 +1899,96 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
         </div>
       )}
 
-      {/* TAB 1: EMITIR RECIBO */}
+      {/* TAB 1: EMITIR RECIBO - PREENCHIMENTO EM TELA COMPLETA */}
       {activeTab === 'CREATE' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          {/* Formulário de Preenchimento */}
-          <form onSubmit={handleGenerateAndSave} className="lg:col-span-6 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <h2 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                <Receipt size={18} className="text-teal-600" /> 
-                {type === 'RECEITA' ? 'Preenchimento da Receita Diária' : type === 'MEMBRO' ? 'Recibo de Dízimo / Oferta para Membro' : 'Recibo de Despesa / Saída de Caixa'}
-              </h2>
-              <span className="text-[10px] font-black uppercase text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200">
-                Padrão Eclesiástico
-              </span>
+        <div className="w-full">
+          {/* Formulário de Preenchimento em Tela Completa */}
+          <form onSubmit={handleGenerateAndSave} className="w-full bg-white p-6 sm:p-10 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+            {/* Header com Título e Ações Rápidas de Visualizar / Enviar / Imprimir */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+              <div>
+                <span className="text-[10px] font-black uppercase text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200">
+                  Padrão Eclesiástico Oficial
+                </span>
+                <h2 className="text-base sm:text-lg font-black text-slate-900 uppercase tracking-tight flex items-center gap-2 mt-1">
+                  <Receipt size={20} className="text-teal-600" /> 
+                  {type === 'RECEITA' ? 'Preenchimento da Receita Diária' : type === 'MEMBRO' ? 'Recibo de Dízimo / Oferta para Membro' : 'Recibo de Despesa / Saída de Caixa'}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Preencha os dados abaixo. O recibo oficial será exibido em tela completa apenas quando você for visualizar, imprimir ou enviar.
+                </p>
+              </div>
+
+              {/* Botões de Ação no Topo */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setViewingReceiptModal(getCurrentReceiptData())}
+                  className="px-3.5 py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-950 border border-teal-300 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs"
+                  title="Visualizar recibo completo no Olhinho com todas as opções de impressão"
+                >
+                  <Eye size={16} className="text-teal-700" />
+                  <span>Ver no Olhinho</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsApp(getCurrentReceiptData())}
+                  className="px-3.5 py-2.5 bg-blue-50 hover:bg-[#2D7FF9] text-[#2D7FF9] hover:text-white border border-blue-200 hover:border-transparent rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-xs"
+                  title="Enviar dados deste recibo diretamente pelo WhatsApp"
+                >
+                  <MessageCircle size={16} />
+                  <span>WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handlePrint('SINGLE', getCurrentReceiptData())}
+                  className="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm"
+                  title="Imprimir 1 Recibo Limpo na Folha A4"
+                >
+                  <Printer size={16} />
+                  <span>Imprimir A4</span>
+                </button>
+              </div>
             </div>
 
             {/* Seletor de Tipo com 3 Opções Claras */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4">
               <button
                 type="button"
                 onClick={() => setType('RECEITA')}
-                className={`p-3 sm:p-3.5 rounded-2xl border-2 text-left transition-all ${type === 'RECEITA' ? 'border-teal-500 bg-teal-50/70 text-teal-950 shadow-sm ring-2 ring-teal-500/20' : 'border-slate-100 bg-slate-50/60 text-slate-600 hover:border-slate-200'}`}
+                className={`p-3.5 sm:p-4 rounded-2xl border-2 text-left transition-all ${type === 'RECEITA' ? 'border-teal-500 bg-teal-50/70 text-teal-950 shadow-sm ring-2 ring-teal-500/20' : 'border-slate-100 bg-slate-50/60 text-slate-600 hover:border-slate-200'}`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-teal-950">Receita Diária</span>
-                  <span className={`w-3 h-3 rounded-full ${type === 'RECEITA' ? 'bg-teal-600' : 'bg-slate-300'}`} />
+                  <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-teal-950">Receita Diária</span>
+                  <span className={`w-3.5 h-3.5 rounded-full ${type === 'RECEITA' ? 'bg-teal-600 ring-2 ring-teal-300' : 'bg-slate-300'}`} />
                 </div>
-                <p className="text-[9px] text-slate-500 leading-tight">Dízimos e Ofertas do Culto</p>
+                <p className="text-[10px] text-slate-500 leading-tight">Dízimos e Ofertas do Culto</p>
               </button>
 
               <button
                 type="button"
                 onClick={() => setType('DESPESA')}
-                className={`p-3 sm:p-3.5 rounded-2xl border-2 text-left transition-all ${type === 'DESPESA' ? 'border-rose-500 bg-rose-50/70 text-rose-950 shadow-sm ring-2 ring-rose-500/20' : 'border-slate-100 bg-slate-50/60 text-slate-600 hover:border-slate-200'}`}
+                className={`p-3.5 sm:p-4 rounded-2xl border-2 text-left transition-all ${type === 'DESPESA' ? 'border-rose-500 bg-rose-50/70 text-rose-950 shadow-sm ring-2 ring-rose-500/20' : 'border-slate-100 bg-slate-50/60 text-slate-600 hover:border-slate-200'}`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-rose-950">Despesa</span>
-                  <span className={`w-3 h-3 rounded-full ${type === 'DESPESA' ? 'bg-rose-600' : 'bg-slate-300'}`} />
+                  <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-rose-950">Despesa</span>
+                  <span className={`w-3.5 h-3.5 rounded-full ${type === 'DESPESA' ? 'bg-rose-600 ring-2 ring-rose-300' : 'bg-slate-300'}`} />
                 </div>
-                <p className="text-[9px] text-slate-500 leading-tight">Pagamento a Prestador</p>
+                <p className="text-[10px] text-slate-500 leading-tight">Pagamento a Prestador</p>
               </button>
 
               <button
                 type="button"
                 onClick={() => setType('MEMBRO')}
-                className={`p-3 sm:p-3.5 rounded-2xl border-2 text-left transition-all ${type === 'MEMBRO' ? 'border-indigo-500 bg-indigo-50/70 text-indigo-950 shadow-sm ring-2 ring-indigo-500/20' : 'border-slate-100 bg-slate-50/60 text-slate-600 hover:border-slate-200'}`}
+                className={`p-3.5 sm:p-4 rounded-2xl border-2 text-left transition-all ${type === 'MEMBRO' ? 'border-indigo-500 bg-indigo-50/70 text-indigo-950 shadow-sm ring-2 ring-indigo-500/20' : 'border-slate-100 bg-slate-50/60 text-slate-600 hover:border-slate-200'}`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-indigo-950">Ao Membro</span>
-                  <span className={`w-3 h-3 rounded-full ${type === 'MEMBRO' ? 'bg-indigo-600' : 'bg-slate-300'}`} />
+                  <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-indigo-950">Ao Membro</span>
+                  <span className={`w-3.5 h-3.5 rounded-full ${type === 'MEMBRO' ? 'bg-indigo-600 ring-2 ring-indigo-300' : 'bg-slate-300'}`} />
                 </div>
-                <p className="text-[9px] text-slate-500 leading-tight">Comprovante Dizimista</p>
+                <p className="text-[10px] text-slate-500 leading-tight">Comprovante Dizimista</p>
               </button>
             </div>
 
@@ -1123,7 +2003,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
                 />
               </div>
 
@@ -1134,7 +2014,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                   value={institutionName}
                   onChange={(e) => setInstitutionName(e.target.value)}
                   required
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
                 />
               </div>
             </div>
@@ -1142,19 +2022,19 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
             {/* CAMPOS ESPECÍFICOS POR TIPO */}
             {type === 'RECEITA' ? (
               <div className="space-y-4 pt-1">
-                <div className="p-4 sm:p-5 bg-gradient-to-br from-teal-50/90 to-emerald-50/40 rounded-2xl border-2 border-teal-200 shadow-sm space-y-4">
+                <div className="p-4 sm:p-6 bg-gradient-to-br from-teal-50/90 to-emerald-50/40 rounded-2xl border-2 border-teal-200 shadow-sm space-y-4">
                   <div className="flex items-center justify-between border-b border-teal-100 pb-2">
-                    <span className="text-xs font-black text-teal-950 uppercase tracking-wide flex items-center gap-1.5">
-                      <TrendingUp size={16} className="text-teal-700" /> Discriminativo das Entradas
+                    <span className="text-xs sm:text-sm font-black text-teal-950 uppercase tracking-wide flex items-center gap-1.5">
+                      <TrendingUp size={18} className="text-teal-700" /> Discriminativo das Entradas
                     </span>
-                    <span className="text-[9px] text-teal-800 font-extrabold bg-teal-200/80 px-2 py-0.5 rounded-full uppercase">
+                    <span className="text-[9px] text-teal-800 font-extrabold bg-teal-200/80 px-2.5 py-0.5 rounded-full uppercase">
                       Soma Automática
                     </span>
                   </div>
 
-                  {/* 3 Colunas de Entradas */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-white p-3.5 rounded-2xl border-2 border-emerald-200 shadow-sm">
+                  {/* 3 Colunas de Entradas Espaçosas */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-white p-4 rounded-2xl border-2 border-emerald-200 shadow-sm">
                       <span className="text-[10px] font-black text-emerald-900 uppercase tracking-wider block mb-1">1. Dízimos</span>
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-emerald-600 font-black text-xs">R$</span>
@@ -1163,12 +2043,12 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                           value={tithes}
                           onChange={(e) => setTithes(e.target.value)}
                           placeholder="0,00"
-                          className="w-full pl-9 pr-2 py-2 rounded-xl border border-emerald-200 font-black text-slate-900 text-base bg-emerald-50/20 focus:bg-white outline-none"
+                          className="w-full pl-9 pr-2 py-2 rounded-xl border border-emerald-200 font-black text-slate-900 text-lg bg-emerald-50/20 focus:bg-white outline-none"
                         />
                       </div>
                     </div>
 
-                    <div className="bg-white p-3.5 rounded-2xl border-2 border-teal-200 shadow-sm">
+                    <div className="bg-white p-4 rounded-2xl border-2 border-teal-200 shadow-sm">
                       <span className="text-[10px] font-black text-teal-900 uppercase tracking-wider block mb-1">2. Ofertas</span>
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-teal-600 font-black text-xs">R$</span>
@@ -1177,12 +2057,12 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                           value={offerings}
                           onChange={(e) => setOfferings(e.target.value)}
                           placeholder="0,00"
-                          className="w-full pl-9 pr-2 py-2 rounded-xl border border-teal-200 font-black text-slate-900 text-base bg-teal-50/20 focus:bg-white outline-none"
+                          className="w-full pl-9 pr-2 py-2 rounded-xl border border-teal-200 font-black text-slate-900 text-lg bg-teal-50/20 focus:bg-white outline-none"
                         />
                       </div>
                     </div>
 
-                    <div className="bg-white p-3.5 rounded-2xl border-2 border-amber-200 shadow-sm">
+                    <div className="bg-white p-4 rounded-2xl border-2 border-amber-200 shadow-sm">
                       <span className="text-[10px] font-black text-amber-950 uppercase tracking-wider block mb-1">3. Especial</span>
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-amber-600 font-black text-xs">R$</span>
@@ -1191,19 +2071,19 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                           value={specialOfferings}
                           onChange={(e) => setSpecialOfferings(e.target.value)}
                           placeholder="0,00"
-                          className="w-full pl-9 pr-2 py-2 rounded-xl border border-amber-200 font-black text-slate-900 text-base bg-amber-50/20 focus:bg-white outline-none"
+                          className="w-full pl-9 pr-2 py-2 rounded-xl border border-amber-200 font-black text-slate-900 text-lg bg-amber-50/20 focus:bg-white outline-none"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Banner de Valor Total da Receita */}
-                  <div className="p-3.5 bg-slate-900 text-white rounded-xl flex justify-between items-center">
+                  <div className="p-4 bg-slate-900 text-white rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div>
-                      <span className="text-[9px] font-black text-teal-300 uppercase tracking-widest block">TOTAL APURADO</span>
-                      <span className="text-[10px] text-slate-300 italic block">{extensoAtual}</span>
+                      <span className="text-[10px] font-black text-teal-300 uppercase tracking-widest block">TOTAL APURADO</span>
+                      <span className="text-xs text-slate-300 italic block">{extensoAtual}</span>
                     </div>
-                    <span className="text-xl sm:text-2xl font-black text-teal-300">{formatBRL(totalCalculated)}</span>
+                    <span className="text-2xl sm:text-3xl font-black text-teal-300">{formatBRL(totalCalculated)}</span>
                   </div>
                 </div>
 
@@ -1214,7 +2094,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Ex: Culto de Domingo / Santa Ceia / Escola Bíblica"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
                   />
                 </div>
               </div>
@@ -1244,7 +2124,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                       onChange={(e) => setPersonName(e.target.value)}
                       placeholder="Nome completo do membro"
                       required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:border-indigo-500 outline-none"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:border-indigo-500 outline-none"
                     />
                   </div>
                 </div>
@@ -1257,7 +2137,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                       value={docNumber}
                       onChange={(e) => setDocNumber(e.target.value)}
                       placeholder="000.000.000-00"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs outline-none"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs outline-none"
                     />
                   </div>
                   <div className="sm:col-span-2">
@@ -1268,7 +2148,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder="Ex: Dízimo do mês de Setembro e Oferta de Missões"
                       required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold outline-none"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold outline-none"
                     />
                   </div>
                 </div>
@@ -1299,7 +2179,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                       onChange={(e) => setPersonName(e.target.value)}
                       placeholder="Nome do fornecedor / prestador"
                       required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:border-rose-500 outline-none"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:border-rose-500 outline-none"
                     />
                   </div>
                 </div>
@@ -1312,7 +2192,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                       value={docNumber}
                       onChange={(e) => setDocNumber(e.target.value)}
                       placeholder="000.000.000-00"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs outline-none"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs outline-none"
                     />
                   </div>
                   <div className="sm:col-span-2">
@@ -1323,7 +2203,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder="Ex: Manutenção no sistema de som do templo"
                       required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold outline-none"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold outline-none"
                     />
                   </div>
                 </div>
@@ -1438,272 +2318,49 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
               </div>
             </div>
 
-            {/* Ações de Geração */}
-            <div className="pt-2 flex flex-col gap-2.5">
+            {/* Ações de Geração e Envio: 4 Botões Claros */}
+            <div className="pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <button
+                type="button"
+                onClick={() => setViewingReceiptModal(getCurrentReceiptData())}
+                className="py-4 px-4 bg-teal-50 hover:bg-teal-100 text-teal-950 border-2 border-teal-300 font-black text-xs uppercase tracking-wider rounded-2xl transition-all flex items-center justify-center gap-2 shadow-xs"
+                title="Abrir recibo oficial em tela cheia (Olhinho)"
+              >
+                <Eye size={18} className="text-teal-700" />
+                <span>Ver no Olhinho</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSendWhatsApp(getCurrentReceiptData())}
+                className="py-4 px-4 bg-[#2D7FF9] hover:bg-blue-600 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm"
+                title="Mandar recibo formatado pelo WhatsApp"
+              >
+                <MessageCircle size={18} />
+                <span>Mandar no WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handlePrint('SINGLE', getCurrentReceiptData())}
+                className="py-4 px-4 bg-[#1d4ed8] hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm"
+                title="Imprimir 1 Recibo Limpo na Folha A4"
+              >
+                <Printer size={18} />
+                <span>Imprimir A4</span>
+              </button>
+
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full py-4 bg-teal-700 hover:bg-teal-800 text-white font-black text-xs uppercase tracking-widest rounded-xl shadow-lg shadow-teal-700/20 transition-all flex items-center justify-center gap-2"
+                className="py-4 px-4 bg-teal-700 hover:bg-teal-800 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-teal-700/25 transition-all flex items-center justify-center gap-2"
+                title="Gravar no sistema e abrir para impressão/envio"
               >
                 <Plus size={18} />
-                {saving ? 'Registrando...' : 'Salvar e Gerar Novo Recibo'}
+                <span>{saving ? 'Registrando...' : 'Salvar e Gerar Recibo'}</span>
               </button>
             </div>
           </form>
-
-          {/* PAINEL DE PRÉ-VISUALIZAÇÃO E IMPRESSÃO (LIVE PREVIEW) */}
-          <div className="lg:col-span-6 space-y-4">
-            {/* Header da Visualização */}
-            <div className="bg-slate-900 text-white p-4 rounded-3xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div>
-                <span className="text-[9px] font-black text-teal-400 uppercase tracking-widest block">VISUALIZAÇÃO AO VIVO</span>
-                <h3 className="text-sm font-black uppercase tracking-tight">Recibo Eclesiástico ADGU</h3>
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
-                {selectedReceiptForPreview && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedReceiptForPreview(null)}
-                      className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
-                      title="Voltar para rascunho de novo recibo"
-                    >
-                      <RefreshCw size={14} /> Novo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(selectedReceiptForPreview.id)}
-                      className="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
-                      title="Excluir este recibo"
-                    >
-                      <Trash2 size={14} /> Excluir
-                    </button>
-                  </>
-                )}
-                <button
-                  type="button"
-                  onClick={handleNativePrint}
-                  className="flex-1 sm:flex-none px-3.5 py-2 bg-[#1d4ed8] hover:bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md"
-                  title="Abrir diálogo de impressão do navegador"
-                >
-                  <Printer size={15} /> Imprimir Recibo
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCopyWhatsApp}
-                  className="px-3 py-2 bg-[#2D7FF9] hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
-                  title="Copiar dados para enviar pelo WhatsApp"
-                >
-                  {copiedWhatsApp ? <Check size={15} className="text-blue-200" /> : <Share2 size={15} />}
-                  <span className="hidden sm:inline">{copiedWhatsApp ? 'Copiado!' : 'WhatsApp'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Caixa Visual do Recibo (Espelho Perfeito do que Sai na Folha) */}
-            <div className="bg-white rounded-3xl border-2 border-slate-300 shadow-xl overflow-hidden p-6 space-y-4 relative">
-              
-              {/* Faixa Superior Turquesa */}
-              <div className="h-2 bg-teal-700 -mx-6 -mt-6" />
-
-              {/* Cabeçalho do Recibo */}
-              <div className="flex justify-between items-start border-b border-slate-200 pb-3 gap-3">
-                <div className="flex items-center gap-3">
-                  {churchSettings?.logo ? (
-                    <img src={churchSettings.logo} className="w-12 h-12 object-contain rounded-lg" alt="Logo" />
-                  ) : (
-                    <div className="w-11 h-11 bg-teal-700 text-white rounded-xl flex items-center justify-center font-black text-xs">
-                      ADGU
-                    </div>
-                  )}
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-black text-slate-900 uppercase">
-                      {churchSettings?.institutionName || 'Assembléia de Deus Geração Unida'}
-                    </h4>
-                    <p className="text-[9px] text-slate-500 font-bold">CNPJ: {churchSettings?.cnpj || '49.386.673/0001-10'} | Ministério ADGU</p>
-                    <p className="text-[9px] text-slate-400">{churchSettings?.address || 'Rua 12 de Outubro, 779 - Parque Tijuca - Maracanaú - CE'}</p>
-                  </div>
-                </div>
-
-                <div className="text-right space-y-1.5 shrink-0">
-                  <div className="bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-lg text-right">
-                    <span className="text-[8px] font-black text-teal-800 uppercase block">{activeReceipt.number}</span>
-                    <span className="text-[8px] text-slate-400 font-bold block">1ª VIA - IGREJA</span>
-                  </div>
-                  <div className="bg-teal-700 text-white px-2.5 py-1 rounded-lg text-right">
-                    <span className="text-[8px] text-teal-200 font-bold block uppercase">VALOR TOTAL</span>
-                    <span className="text-xs font-black block">{formatBRL(activeReceipt.amount)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Corpo do Recibo */}
-              {activeReceipt.type === 'RECEITA' ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="p-2 border border-slate-200 rounded-xl bg-slate-50/50">
-                      <span className="text-[9px] font-bold text-slate-400 block uppercase">Congregação</span>
-                      <span className="font-black text-slate-800">{activeReceipt.institutionName}</span>
-                    </div>
-                    <div className="p-2 bg-teal-50/70 border border-teal-100 rounded-xl">
-                      <span className="text-[9px] font-bold text-teal-700 block uppercase">Data do Culto / Local</span>
-                      <span className="font-black text-teal-950">{activeReceipt.city}, {dateFormattedPreview}</span>
-                    </div>
-                  </div>
-
-                  {/* 3 Blocos de Entradas */}
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="p-2.5 border-2 border-emerald-100 bg-emerald-50/40 rounded-xl">
-                      <span className="text-[8px] font-black text-emerald-800 uppercase block">DÍZIMOS</span>
-                      <span className="text-xs sm:text-sm font-black text-slate-900 block mt-0.5">{formatBRL(activeReceipt.tithes || 0)}</span>
-                    </div>
-                    <div className="p-2.5 border-2 border-teal-100 bg-teal-50/40 rounded-xl">
-                      <span className="text-[8px] font-black text-teal-800 uppercase block">OFERTAS</span>
-                      <span className="text-xs sm:text-sm font-black text-slate-900 block mt-0.5">{formatBRL(activeReceipt.offerings || 0)}</span>
-                    </div>
-                    <div className="p-2.5 border-2 border-amber-100 bg-amber-50/40 rounded-xl">
-                      <span className="text-[8px] font-black text-amber-800 uppercase block">ESPECIAL</span>
-                      <span className="text-xs sm:text-sm font-black text-slate-900 block mt-0.5">{formatBRL(activeReceipt.specialOfferings || 0)}</span>
-                    </div>
-                  </div>
-
-                  {/* Faixa de Total e Extenso */}
-                  <div className="p-3 bg-gradient-to-r from-teal-50 via-teal-100/50 to-emerald-50 border border-teal-200 rounded-xl space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[9px] font-black text-teal-900 uppercase">VALOR TOTAL DA RECEITA DIÁRIA</span>
-                      <span className="text-sm font-black text-teal-950">{formatBRL(activeReceipt.amount)}</span>
-                    </div>
-                    <p className="text-[10px] text-teal-900 font-bold italic leading-tight">
-                      ({valorPorExtenso(activeReceipt.amount)})
-                    </p>
-                  </div>
-
-                  {activeReceipt.description && (
-                    <div className="p-2 border border-slate-100 rounded-lg text-[10px] text-slate-500 bg-slate-50/40">
-                      <strong>Obs:</strong> {activeReceipt.description}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2.5 text-xs">
-                  <div className="p-2.5 border border-slate-200 rounded-xl bg-white space-y-0.5">
-                    <span className="text-[9px] font-bold text-slate-400 block uppercase">
-                      {activeReceipt.type === 'MEMBRO' ? 'Recebemos do(a) irmão(ã)' : 'Paguei(amos) a'}
-                    </span>
-                    <span className="font-black text-slate-900 text-xs sm:text-sm block">
-                      {activeReceipt.personName} {activeReceipt.docNumber && `(CPF/CNPJ: ${activeReceipt.docNumber})`}
-                    </span>
-                  </div>
-
-                  <div className="p-2.5 bg-teal-50/70 border border-teal-100 rounded-xl space-y-0.5">
-                    <span className="text-[9px] font-bold text-teal-700 block uppercase">a importância de</span>
-                    <span className="font-black text-teal-950 text-xs block">
-                      {formatBRL(activeReceipt.amount)} ({valorPorExtenso(activeReceipt.amount)})
-                    </span>
-                  </div>
-
-                  <div className="p-2.5 border border-slate-200 rounded-xl bg-white space-y-0.5">
-                    <span className="text-[9px] font-bold text-slate-400 block uppercase">referente a</span>
-                    <span className="font-bold text-slate-800 text-xs block">{activeReceipt.description}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-[10px]">
-                    <div className="p-2 border border-slate-200 rounded-lg bg-slate-50/50">
-                      <span className="text-[8px] font-bold text-slate-400 uppercase block">Congregação</span>
-                      <span className="font-bold text-slate-800 block">{activeReceipt.institutionName}</span>
-                    </div>
-                    <div className="p-2 bg-teal-50/50 rounded-lg border border-teal-100">
-                      <span className="text-[8px] font-bold text-teal-700 uppercase block">Local e Data</span>
-                      <span className="font-bold text-teal-950 block">{activeReceipt.city}, {dateFormattedPreview}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Quadro de Assinaturas - Área em Branco para Assinatura */}
-              {signatureLayout === 'SINGLE_PASTOR' || signatureLayout === 'SINGLE_TREASURER' ? (
-                <div className="pt-2 max-w-md mx-auto text-center">
-                  <div className="p-3.5 bg-white rounded-2xl border-2 border-slate-200 flex flex-col justify-between min-h-[160px] shadow-sm">
-                    <span className="text-[9px] font-black text-teal-800 uppercase tracking-wider block">
-                      {signatureLayout === 'SINGLE_TREASURER' ? 'TESOURARIA GERAL' : 'DIRETORIA / DIRIGENTE RESPONSÁVEL'}
-                    </span>
-                    <div className="h-24 bg-white" />
-                    <div className="w-4/5 mx-auto border-b-2 border-slate-700 mb-1.5" />
-                    <span className="font-black text-slate-900 text-xs uppercase block">
-                      {signatureLayout === 'SINGLE_TREASURER' ? activeReceipt.treasurerName : activeReceipt.pastorName}
-                    </span>
-                    <span className="text-[9px] text-slate-500 font-medium block">
-                      {signatureLayout === 'SINGLE_TREASURER' ? activeReceipt.treasurerRole : activeReceipt.pastorRole}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3 pt-2 text-center">
-                  <div className="p-3 bg-white rounded-2xl border-2 border-slate-200 flex flex-col justify-between min-h-[160px] shadow-sm">
-                    <span className="text-[8px] font-black text-teal-800 uppercase tracking-wider block">TESOURARIA GERAL</span>
-                    <div className="h-20 bg-white" />
-                    <div className="w-full border-b border-slate-500 mb-1" />
-                    <span className="font-black text-slate-900 text-[10px] leading-tight block">{activeReceipt.treasurerName.toUpperCase()}</span>
-                    <span className="text-[8px] text-slate-500 font-medium block">{activeReceipt.treasurerRole}</span>
-                  </div>
-
-                  <div className="p-3 bg-white rounded-2xl border-2 border-slate-200 flex flex-col justify-between min-h-[160px] shadow-sm">
-                    <span className="text-[8px] font-black text-teal-800 uppercase tracking-wider block">DIRETORIA / DIRIGENTE</span>
-                    <div className="h-20 bg-white" />
-                    <div className="w-full border-b border-slate-500 mb-1" />
-                    <span className="font-black text-slate-900 text-[10px] leading-tight block">{activeReceipt.pastorName.toUpperCase()}</span>
-                    <span className="text-[8px] text-slate-500 font-medium block">{activeReceipt.pastorRole}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Informação sobre Assinatura */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2 text-[10px] text-slate-600">
-                <div className="flex items-center gap-2">
-                  <span>Área em branco dimensionada com tamanho reservado para carimbo GOV.BR ou assinatura manual.</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowGovHelp(true)}
-                  className="underline font-bold text-teal-800 hover:text-teal-950 shrink-0"
-                >
-                  Como assinar no GOV.BR
-                </button>
-              </div>
-
-              {/* Rodapé Oficial Slogan */}
-              <p className="text-center text-[9px] font-black text-teal-800 pt-1 tracking-wider uppercase">
-                ADGU - Gerando Vidas para o Reino!
-              </p>
-            </div>
-
-            {/* Botões de Download do PDF */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div>
-                <span className="text-xs font-black text-slate-800 block">Opções de Exportação em PDF:</span>
-                <span className="text-[10px] text-slate-500 block">Escolha o formato ideal para impressão ou envio digital</span>
-              </div>
-              <div className="flex gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => exportPDF_A4(activeReceipt)}
-                  className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md"
-                  title="Baixa folha A4 com 2 vias separadas por corte"
-                >
-                  <Scissors size={14} className="text-teal-400" /> Baixar A4 (2 Vias)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => exportPDF_A5(activeReceipt)}
-                  className="flex-1 sm:flex-none px-4 py-2.5 bg-teal-800 hover:bg-teal-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all"
-                  title="Baixa 1 via em formato A5 paisagem"
-                >
-                  <ArrowDownToLine size={14} /> Baixar A5 (1 Via)
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -1713,7 +2370,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">Histórico de Documentos Emitidos</h2>
-              <p className="text-xs text-slate-500">Consulte, reimprima ou baixe receitas diárias e recibos cadastrados</p>
+              <p className="text-xs text-slate-500">Consulte, visualize no olhinho, envie por WhatsApp ou imprima na folha A4</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
@@ -1741,6 +2398,61 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
             </div>
           </div>
 
+          {/* BARRA DE AÇÕES EM LOTE QUANDO HOUVER SELEÇÃO */}
+          {selectedHistoryIds.length > 0 && (
+            <div className="bg-teal-900 text-white p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center gap-3">
+                <span className="w-8 h-8 rounded-xl bg-teal-500 text-slate-950 font-black flex items-center justify-center text-xs">
+                  {selectedHistoryIds.length}
+                </span>
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider">
+                    {selectedHistoryIds.length} {selectedHistoryIds.length === 1 ? 'Recibo Selecionado' : 'Recibos Selecionados'}
+                  </h4>
+                  <p className="text-[10px] text-teal-200">
+                    Pronto para imprimir na folha A4 preenchida sem poluição de software (3 recibos por página)
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const selectedList = filteredReceipts.filter(r => selectedHistoryIds.includes(r.id));
+                    handlePrint('MULTI', undefined, selectedList);
+                  }}
+                  className="px-3.5 py-2 bg-white text-teal-950 hover:bg-teal-50 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md"
+                  title="Imprime todos os recibos selecionados agrupados na folha A4 (3 por página)"
+                >
+                  <Printer size={15} />
+                  <span>Imprimir na A4 (3 por Folha)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const selectedList = filteredReceipts.filter(r => selectedHistoryIds.includes(r.id));
+                    exportPDF_A4_Multi(selectedList);
+                  }}
+                  className="px-3 py-2 bg-teal-700 hover:bg-teal-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+                  title="Baixa PDF A4 com todos os selecionados agrupados"
+                >
+                  <FileText size={15} />
+                  <span>Baixar PDF A4 em Lote</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedHistoryIds([])}
+                  className="px-3 py-2 bg-teal-950/60 hover:bg-teal-950 text-teal-200 rounded-xl text-xs font-bold transition-all"
+                >
+                  Desmarcar
+                </button>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="p-12 text-center text-slate-400 text-xs">Carregando documentos...</div>
           ) : filteredReceipts.length === 0 ? (
@@ -1753,77 +2465,131 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
               <table className="w-full text-left text-xs text-slate-700">
                 <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">
                   <tr>
+                    <th className="p-3 w-10 text-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedHistoryIds.length === filteredReceipts.length) {
+                            setSelectedHistoryIds([]);
+                          } else {
+                            setSelectedHistoryIds(filteredReceipts.map(r => r.id));
+                          }
+                        }}
+                        className="text-slate-600 hover:text-slate-900"
+                        title={selectedHistoryIds.length === filteredReceipts.length ? 'Desmarcar todos' : 'Selecionar todos para impressão A4 em lote'}
+                      >
+                        {selectedHistoryIds.length === filteredReceipts.length && filteredReceipts.length > 0 ? (
+                          <CheckSquare size={16} className="text-teal-700" />
+                        ) : (
+                          <Square size={16} />
+                        )}
+                      </button>
+                    </th>
                     <th className="p-3">Nº Documento</th>
                     <th className="p-3">Data</th>
                     <th className="p-3">Tipo</th>
                     <th className="p-3">Congregação / Favorecido</th>
                     <th className="p-3">Detalhamento</th>
                     <th className="p-3 text-right">Valor Total</th>
-                    <th className="p-3 text-center">Imprimir / PDF</th>
+                    <th className="p-3 text-center">Ações (Olhinho / Whats / A4)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredReceipts.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="p-3 font-bold text-slate-900">{r.number}</td>
-                      <td className="p-3">{new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-                      <td className="p-3">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                          r.type === 'RECEITA' ? 'bg-teal-100 text-teal-800' : 
-                          r.type === 'MEMBRO' ? 'bg-indigo-100 text-indigo-800' : 'bg-rose-100 text-rose-800'
-                        }`}>
-                          {r.type === 'RECEITA' ? 'Receita Diária' : r.type === 'MEMBRO' ? 'Membro' : 'Despesa'}
-                        </span>
-                      </td>
-                      <td className="p-3 font-bold text-slate-900">{r.personName}</td>
-                      <td className="p-3 max-w-xs truncate text-slate-500">
-                        {r.type === 'RECEITA' && (r.tithes !== undefined || r.offerings !== undefined)
-                          ? `Dízimos: ${formatBRL(r.tithes || 0)} | Ofertas: ${formatBRL(r.offerings || 0)} | Especial: ${formatBRL(r.specialOfferings || 0)}`
-                          : r.description}
-                      </td>
-                      <td className="p-3 text-right font-black text-slate-900">{formatBRL(r.amount)}</td>
-                      <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                  {filteredReceipts.map((r) => {
+                    const isSelected = selectedHistoryIds.includes(r.id);
+                    return (
+                      <tr key={r.id} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-teal-50/40' : ''}`}>
+                        <td className="p-3 text-center">
                           <button
                             type="button"
                             onClick={() => {
-                              setSelectedReceiptForPreview(r);
-                              setType(r.type);
-                              setActiveTab('CREATE');
+                              setSelectedHistoryIds(prev =>
+                                prev.includes(r.id) ? prev.filter(id => id !== r.id) : [...prev, r.id]
+                              );
                             }}
-                            title="Visualizar e Imprimir"
-                            className="p-2 rounded-lg bg-blue-50 text-[#1d4ed8] hover:bg-[#1d4ed8] hover:text-white transition-colors"
+                            className="text-slate-600 hover:text-slate-900"
                           >
-                            <Eye size={15} />
+                            {isSelected ? (
+                              <CheckSquare size={16} className="text-teal-700" />
+                            ) : (
+                              <Square size={16} />
+                            )}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => exportPDF_A4(r)}
-                            title="Baixar PDF A4 (2 Vias)"
-                            className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-bold text-[10px]"
-                          >
-                            A4
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => exportPDF_A5(r)}
-                            title="Baixar PDF A5 (1 Via)"
-                            className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-bold text-[10px]"
-                          >
-                            A5
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(r.id)}
-                            title="Excluir documento"
-                            className="px-2.5 py-2 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors flex items-center gap-1 text-[10px] font-black uppercase"
-                          >
-                            <Trash2 size={14} /> Excluir
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="p-3 font-bold text-slate-900">{r.number}</td>
+                        <td className="p-3">{new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                        <td className="p-3">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                            r.type === 'RECEITA' ? 'bg-teal-100 text-teal-800' : 
+                            r.type === 'MEMBRO' ? 'bg-indigo-100 text-indigo-800' : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {r.type === 'RECEITA' ? 'Receita Diária' : r.type === 'MEMBRO' ? 'Membro' : 'Despesa'}
+                          </span>
+                        </td>
+                        <td className="p-3 font-bold text-slate-900">{r.personName}</td>
+                        <td className="p-3 max-w-xs truncate text-slate-500">
+                          {r.type === 'RECEITA' && (r.tithes !== undefined || r.offerings !== undefined)
+                            ? `Dízimos: ${formatBRL(r.tithes || 0)} | Ofertas: ${formatBRL(r.offerings || 0)} | Especial: ${formatBRL(r.specialOfferings || 0)}`
+                            : r.description}
+                        </td>
+                        <td className="p-3 text-right font-black text-slate-900">{formatBRL(r.amount)}</td>
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            {/* Olhinho Button: Visualizar no Modal */}
+                            <button
+                              type="button"
+                              onClick={() => setViewingReceiptModal(r)}
+                              title="Visualizar no Olhinho (Tela Cheia com todas as opções de Impressão e WhatsApp)"
+                              className="px-2.5 py-1.5 rounded-xl bg-teal-50 text-teal-800 hover:bg-teal-700 hover:text-white transition-all font-black text-[11px] flex items-center gap-1 shadow-xs"
+                            >
+                              <Eye size={15} />
+                              <span className="hidden sm:inline">Ver</span>
+                            </button>
+
+                            {/* WhatsApp Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleSendWhatsApp(r)}
+                              title="Enviar este recibo diretamente no WhatsApp"
+                              className="p-1.5 rounded-xl bg-blue-50 text-[#2D7FF9] hover:bg-[#2D7FF9] hover:text-white transition-all shadow-xs"
+                            >
+                              <MessageCircle size={15} />
+                            </button>
+
+                            {/* Imprimir A4 Limpo */}
+                            <button
+                              type="button"
+                              onClick={() => handlePrint('SINGLE', r)}
+                              title="Imprimir 1 Recibo Limpo na Folha A4"
+                              className="p-1.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-[#1d4ed8] hover:text-white transition-all"
+                            >
+                              <Printer size={15} />
+                            </button>
+
+                            {/* Baixar PDF A4 */}
+                            <button
+                              type="button"
+                              onClick={() => exportPDF_A4_Single(r)}
+                              title="Baixar PDF A4 (1 Via Grande e Limpa)"
+                              className="px-2 py-1.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-bold text-[10px]"
+                            >
+                              PDF A4
+                            </button>
+
+                            {/* Excluir */}
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(r.id)}
+                              title="Excluir documento"
+                              className="p-1.5 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -2019,6 +2785,212 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                 Entendi, Fechar Guia
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL OFICIAL DO OLHINHO: VISUALIZAÇÃO AMPLIADA DO RECIBO, IMPRESSÃO A4 LIMPA E WHATSAPP */}
+      {viewingReceiptModal && (
+        <div className="fixed inset-0 z-[250] bg-slate-950/85 backdrop-blur-md overflow-y-auto p-2 sm:p-4 md:p-6 flex flex-col items-center animate-in fade-in duration-200">
+          {/* Barra Superior Principal */}
+          <div className="bg-slate-900 border border-slate-800 text-white w-full max-w-5xl rounded-3xl p-4 shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sticky top-2 z-30">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-teal-500/20 text-teal-400 flex items-center justify-center font-black">
+                <Eye size={22} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-teal-400 uppercase tracking-widest">VISUALIZAÇÃO OFICIAL NO OLHINHO</span>
+                  <span className="bg-teal-900/80 text-teal-300 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-teal-500/40">
+                    {viewingReceiptModal.number}
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                  <span>{viewingReceiptModal.personName}</span>
+                  <span className="text-slate-400 font-normal">|</span>
+                  <span className="text-teal-300 font-black">{formatBRL(viewingReceiptModal.amount)}</span>
+                </h3>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-end">
+              {/* WhatsApp Button */}
+              <button
+                type="button"
+                onClick={() => handleSendWhatsApp(viewingReceiptModal)}
+                className="px-3.5 py-2 bg-[#2D7FF9] hover:bg-blue-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md"
+                title="Mandar este recibo diretamente para o WhatsApp do irmão ou tesoureiro"
+              >
+                <MessageCircle size={16} />
+                <span>Enviar no WhatsApp</span>
+              </button>
+
+              {/* Copiar Texto */}
+              <button
+                type="button"
+                onClick={() => handleCopyWhatsApp(viewingReceiptModal)}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700"
+                title="Copiar texto detalhado do recibo para colar no WhatsApp ou e-mail"
+              >
+                {copiedWhatsApp ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+                <span>{copiedWhatsApp ? 'Copiado!' : 'Copiar Texto'}</span>
+              </button>
+
+              {/* Botão de Impressão Direta A4 */}
+              <button
+                type="button"
+                onClick={() => handlePrint('SINGLE', viewingReceiptModal)}
+                className="px-4 py-2 bg-[#1d4ed8] hover:bg-blue-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md uppercase tracking-wider"
+                title="Imprime apenas o recibo em Folha A4 limpa sem barras ou cabeçalhos do site"
+              >
+                <Printer size={16} />
+                <span>Imprimir A4</span>
+              </button>
+
+              {/* Fechar Modal */}
+              <button
+                type="button"
+                onClick={() => setViewingReceiptModal(null)}
+                className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
+                title="Fechar Visualização"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra Secundária: Modos de Impressão na A4 e Downloads de PDF */}
+          <div className="w-full max-w-5xl bg-white border border-slate-200 rounded-2xl p-3 my-3 shadow-md flex flex-wrap items-center justify-between gap-3 text-xs sticky top-[76px] z-20">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-black text-slate-800 text-[10px] uppercase tracking-wider flex items-center gap-1 mr-1">
+                <Printer size={14} className="text-teal-700" /> Formatos para Folha A4:
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalMode('SINGLE');
+                  handlePrint('SINGLE', viewingReceiptModal);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  modalMode === 'SINGLE'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+                title="Imprime 1 recibo em folha A4 limpa sem poluição de software"
+              >
+                1 Recibo Grande (A4 Limpa)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalMode('2VIAS');
+                  handlePrint('2VIAS', viewingReceiptModal);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  modalMode === '2VIAS'
+                    ? 'bg-teal-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+                title="Imprime 2 vias na mesma folha A4 separadas por linha de corte"
+              >
+                2 Vias em A4 (Com Picote)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalMode('MULTI');
+                  handlePrint('MULTI', viewingReceiptModal);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  modalMode === 'MULTI'
+                    ? 'bg-emerald-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+                title="Folha A4 preenchida com 3 vias/recibos para economia de papel"
+              >
+                3 por Folha A4 (Preenchida)
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-black text-slate-500 text-[10px] uppercase tracking-wider mr-1">
+                Baixar PDF:
+              </span>
+              <button
+                type="button"
+                onClick={() => exportPDF_A4_Single(viewingReceiptModal)}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-[11px] transition-all"
+                title="PDF com 1 recibo grande ocupando a folha A4"
+              >
+                PDF A4 (1 Via)
+              </button>
+              <button
+                type="button"
+                onClick={() => exportPDF_A4_2Vias(viewingReceiptModal)}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-[11px] transition-all"
+                title="PDF com 2 vias na folha A4 com picote"
+              >
+                PDF A4 (2 Vias)
+              </button>
+              <button
+                type="button"
+                onClick={() => exportPDF_A4_3Vias(viewingReceiptModal)}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-[11px] transition-all"
+                title="PDF com folha A4 preenchida com 3 vias"
+              >
+                PDF A4 (3 Vias)
+              </button>
+              <button
+                type="button"
+                onClick={() => exportPDF_A5(viewingReceiptModal)}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-[11px] transition-all"
+                title="PDF formato A5 paisagem"
+              >
+                PDF A5
+              </button>
+            </div>
+          </div>
+
+          {/* CORPO DO RECIBO: SIMULAÇÃO REALISTA DA FOLHA A4 */}
+          <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl p-4 sm:p-8 my-4 border border-slate-300">
+            {modalMode === 'SINGLE' && (
+              <div>
+                <div className="mb-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">
+                  Pré-visualização da Folha A4 Completa (1 Recibo Oficial Limpo)
+                </div>
+                {renderCard(viewingReceiptModal, 'VIA ÚNICA OFICIAL - IGREJA / TESOURARIA', 'LARGE')}
+              </div>
+            )}
+
+            {modalMode === '2VIAS' && (
+              <div className="space-y-6">
+                <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">
+                  Pré-visualização da Folha A4 com 2 Vias (Com Picote)
+                </div>
+                {renderCard(viewingReceiptModal, '1ª VIA - IGREJA / TESOURARIA', 'NORMAL')}
+                <div className="text-center text-xs text-slate-400 border-b border-dashed border-slate-400 py-1 select-none">
+                  - - - - - - - - - - - - - - - - - - - - ✂ Destaque / Corte Aqui - - - - - - - - - - - - - - - - - - - -
+                </div>
+                {renderCard(viewingReceiptModal, viewingReceiptModal.type === 'DESPESA' ? '2ª VIA - FAVORECIDO' : viewingReceiptModal.type === 'MEMBRO' ? '2ª VIA - MEMBRO' : '2ª VIA - ARQUIVO', 'NORMAL')}
+              </div>
+            )}
+
+            {modalMode === 'MULTI' && (
+              <div className="space-y-4">
+                <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">
+                  Pré-visualização da Folha A4 Preenchida com 3 Recibos (Econômico)
+                </div>
+                {renderCard(viewingReceiptModal, '1ª VIA - TESOURARIA', 'COMPACT')}
+                <div className="text-center text-[10px] text-slate-400 border-b border-dashed border-slate-400 py-0.5 select-none">
+                  - - - - - - - - - - - - - - - - - - - - ✂ Corte Aqui - - - - - - - - - - - - - - - - - - - -
+                </div>
+                {renderCard(viewingReceiptModal, '2ª VIA - DIRETORIA', 'COMPACT')}
+                <div className="text-center text-[10px] text-slate-400 border-b border-dashed border-slate-400 py-0.5 select-none">
+                  - - - - - - - - - - - - - - - - - - - - ✂ Corte Aqui - - - - - - - - - - - - - - - - - - - -
+                </div>
+                {renderCard(viewingReceiptModal, '3ª VIA - ARQUIVO CONTÁBIL', 'COMPACT')}
+              </div>
+            )}
           </div>
         </div>
       )}

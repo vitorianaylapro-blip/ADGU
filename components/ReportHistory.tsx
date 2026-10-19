@@ -351,10 +351,12 @@ export const ReportHistory: React.FC<ReportHistoryProps> = ({
 
   // Convert FinancialReport to OfficialReportPDFData for Normal View/PDF
   const mapToNormalReportData = (r: FinancialReport): OfficialReportPDFData => {
-    const competence = r.date ? `${r.date.slice(5, 7)}/${r.date.slice(0, 4)}` : 'GERAL';
+    const rawDate = r.date || '';
+    const competence = rawDate ? `${rawDate.slice(5, 7)}/${rawDate.slice(0, 4)}` : 'GERAL';
     return {
       institutionName: r.institutionName || 'CONGREGAÇÃO LOCAL',
       dateLabel: competence,
+      reportDate: rawDate,
       reporterName: r.reporterName || 'Tesoureiro Local',
       tithes: r.tithes || 0,
       offers: r.offers || 0,
@@ -391,7 +393,7 @@ export const ReportHistory: React.FC<ReportHistoryProps> = ({
     const doc = buildNormalReportPDF(normalData, settings);
     const safeName = (r.institutionName || 'Congregacao').replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeDate = (r.date || 'Data').replace(/[^a-zA-Z0-9_-]/g, '_');
-    doc.save(`ADGU_Relatorio_${safeName}_${safeDate}.pdf`);
+    doc.save(`ADGU_Relatorio_Semanal_${safeName}_${safeDate}.pdf`);
   };
 
   const handleDownloadConsolidatedPDF = async () => {
@@ -676,6 +678,9 @@ export const ReportHistory: React.FC<ReportHistoryProps> = ({
                   (report.prebendaExpense || 0) +
                   (report.totalFixedExpenses || 0);
                 const approvalStatus = report.approvalStatus || 'PENDENTE';
+                const dateFormatted = report.date
+                  ? `${report.date.slice(8, 10)}/${report.date.slice(5, 7)}/${report.date.slice(0, 4)}`
+                  : 'N/D';
                 const compFormatted = report.date
                   ? `${report.date.slice(5, 7)}/${report.date.slice(0, 4)}`
                   : 'N/D';
@@ -687,10 +692,13 @@ export const ReportHistory: React.FC<ReportHistoryProps> = ({
                   >
                     {/* Header do Card */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-50 text-[#1d4ed8] border border-blue-100">
-                            {compFormatted}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-blue-100 text-[#1d4ed8] border border-blue-200 flex items-center gap-1 shadow-2xs">
+                            <Calendar size={12} /> {dateFormatted}
+                          </span>
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            Semanal ({compFormatted})
                           </span>
                           {report.locked && (
                             <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
@@ -712,9 +720,11 @@ export const ReportHistory: React.FC<ReportHistoryProps> = ({
                         <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">
                           {report.institutionName}
                         </h3>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">
-                          Tesoureiro: {report.reporterName}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-x-2 text-[10px] font-bold text-slate-500 uppercase">
+                          <span>Data: <strong className="text-slate-800">{dateFormatted}</strong></span>
+                          <span>•</span>
+                          <span>Tesoureiro: <strong className="text-slate-800">{report.reporterName}</strong></span>
+                        </div>
                       </div>
                     </div>
 
@@ -897,11 +907,19 @@ export const ReportHistory: React.FC<ReportHistoryProps> = ({
             {/* Topo do Modal */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2 py-0.5 rounded-full bg-blue-100 text-[#1d4ed8] text-[9px] font-black uppercase tracking-wider">
+                    Relatório Semanal
+                  </span>
+                  <span className="text-[10px] font-black text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    Data: {viewingReport.date ? viewingReport.date.split('-').reverse().join('/') : 'N/D'}
+                  </span>
+                </div>
                 <h3 className="text-sm font-black text-slate-900 uppercase">
-                  Relatório Financeiro: {viewingReport.institutionName}
+                  {viewingReport.institutionName}
                 </h3>
                 <p className="text-[10px] font-bold text-slate-500 uppercase">
-                  Competência {viewingReport.date ? `${viewingReport.date.slice(5, 7)}/${viewingReport.date.slice(0, 4)}` : 'N/D'}
+                  Data: <strong className="text-slate-800">{viewingReport.date ? viewingReport.date.split('-').reverse().join('/') : 'N/D'}</strong> • Competência {viewingReport.date ? `${viewingReport.date.slice(5, 7)}/${viewingReport.date.slice(0, 4)}` : 'N/D'} • Tesoureiro: {viewingReport.reporterName}
                 </p>
               </div>
 
