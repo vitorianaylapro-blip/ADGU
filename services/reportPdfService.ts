@@ -9,6 +9,8 @@ export interface SystemSettings {
   logo?: string;
   treasurerName?: string;
   treasurerRole?: string;
+  treasurerSignature?: string;
+  treasurerSignatureType?: 'UPLOADED' | 'GOV_BR';
   pastorName?: string;
   pastorRole?: string;
   president?: string;

@@ -453,6 +453,11 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
           </p>
           <div className="grid grid-cols-2 gap-10">
             <div className="text-center">
+              <div className="h-16 flex items-center justify-center">
+                {settings?.treasurerSignature && (
+                  <img src={settings.treasurerSignature} className="max-h-full object-contain" alt="Assinatura" />
+                )}
+              </div>
               <div className="border-t border-slate-400 pt-1.5">
                 <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
                   {treasurerName.toUpperCase()}

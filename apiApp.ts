@@ -73,12 +73,15 @@ export async function initDb() {
             president TEXT DEFAULT 'Pr. Antônio Chaves Crus',
             treasurername TEXT DEFAULT 'Tesoureiro Local',
             treasurerrole TEXT DEFAULT 'Tesoureiro Responsável',
+            treasurersignature TEXT DEFAULT '',
             pastorname TEXT DEFAULT 'Pr. Antônio Chaves Crus',
             pastorrole TEXT DEFAULT 'Pastor Presidente / Dirigente',
             logo TEXT DEFAULT '',
             closingday INTEGER DEFAULT 1,
             CONSTRAINT single_row CHECK (id = 1)
         );
+
+        ALTER TABLE settings ADD COLUMN IF NOT EXISTS treasurersignature TEXT;
 
         CREATE TABLE IF NOT EXISTS users (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -88,6 +91,8 @@ export async function initDb() {
             email TEXT,
             phone TEXT,
             photo TEXT,
+            signature TEXT,
+            signature_type TEXT DEFAULT 'UPLOADED',
             role TEXT NOT NULL DEFAULT 'USER',
             institution TEXT NOT NULL,
             active BOOLEAN DEFAULT TRUE,
@@ -96,6 +101,8 @@ export async function initDb() {
         );
 
         ALTER TABLE users ADD COLUMN IF NOT EXISTS nodiscount BOOLEAN DEFAULT FALSE;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS signature TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_type TEXT DEFAULT 'UPLOADED';
 
         CREATE TABLE IF NOT EXISTS reports (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -175,6 +182,8 @@ export async function initDb() {
             city TEXT NOT NULL,
             treasurername TEXT NOT NULL,
             treasurerrole TEXT,
+            treasurersignature TEXT,
+            treasurersignature_type TEXT DEFAULT 'UPLOADED',
             pastorname TEXT NOT NULL,
             pastorrole TEXT,
             institutionname TEXT NOT NULL,
@@ -183,6 +192,9 @@ export async function initDb() {
             specialofferings NUMERIC DEFAULT 0,
             createdat TIMESTAMPTZ DEFAULT NOW()
         );
+
+        ALTER TABLE receipts ADD COLUMN IF NOT EXISTS treasurersignature TEXT;
+        ALTER TABLE receipts ADD COLUMN IF NOT EXISTS treasurersignature_type TEXT DEFAULT 'UPLOADED';
 
         -- Índices
         CREATE INDEX IF NOT EXISTS idx_reports_date ON reports (date DESC);
@@ -337,13 +349,14 @@ apiRouter.post('/db/sync-all', async (req, res) => {
       const isDept = !!(u.noDiscount || u.role === 'DEPT_TREASURER');
       const finalRole = u.role === 'ADMIN' ? 'ADMIN' : (isDept ? 'DEPT_TREASURER' : (u.role || 'USER'));
       await pool.query(
-        `INSERT INTO users (id, username, password, name, email, phone, photo, role, institution, active, nodiscount)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO users (id, username, password, name, email, phone, photo, signature, signature_type, role, institution, active, nodiscount)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          ON CONFLICT (username) DO UPDATE SET
            name = EXCLUDED.name, email = EXCLUDED.email, phone = EXCLUDED.phone,
+           signature = EXCLUDED.signature, signature_type = EXCLUDED.signature_type,
            role = EXCLUDED.role, institution = EXCLUDED.institution, active = EXCLUDED.active,
            nodiscount = EXCLUDED.nodiscount`,
-        [id, u.username, u.password || '123456', u.name, u.email || '', u.phone || '', u.photo || '', finalRole, u.institution || '', u.active ?? true, isDept]
+        [id, u.username, u.password || '123456', u.name, u.email || '', u.phone || '', u.photo || '', u.signature || '', u.signatureType || 'UPLOADED', finalRole, u.institution || '', u.active ?? true, isDept]
       );
       syncedUsers++;
     }
@@ -415,13 +428,16 @@ apiRouter.post('/db/sync-all', async (req, res) => {
       await pool.query(
         `INSERT INTO receipts (
           id, number, type, amount, personname, docnumber, description, date, city,
-          treasurername, treasurerrole, pastorname, pastorrole, institutionname, tithes, offerings, specialofferings
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        ON CONFLICT (id) DO NOTHING`,
+          treasurername, treasurerrole, treasurersignature, treasurersignature_type, pastorname, pastorrole, institutionname, tithes, offerings, specialofferings
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        ON CONFLICT (id) DO UPDATE SET
+          treasurersignature = EXCLUDED.treasurersignature,
+          treasurersignature_type = EXCLUDED.treasurersignature_type`,
         [
           id, rc.number, rc.type, Number(rc.amount) || 0, rc.personName || 'Membro',
           rc.docNumber || null, rc.description || '', rc.date || new Date().toISOString().split('T')[0],
           rc.city || 'Maracanaú', rc.treasurerName || 'Tesoureiro Local', rc.treasurerRole || null,
+          rc.treasurerSignature || null, rc.treasurerSignatureType || 'UPLOADED',
           rc.pastorName || 'Pr. Antônio Chaves Crus', rc.pastorRole || null,
           rc.institutionName || 'Assembleia de Deus Geração Unida',
           Number(rc.tithes) || 0, Number(rc.offerings) || 0, Number(rc.specialOfferings) || 0
@@ -507,6 +523,7 @@ apiRouter.get('/settings', async (req, res) => {
       president: r.president || 'Pr. Antônio Chaves Crus',
       treasurerName: r.treasurername || 'Tesoureiro Local',
       treasurerRole: r.treasurerrole || 'Tesoureiro Responsável',
+      treasurerSignature: r.treasurersignature || '',
       pastorName: r.pastorname || 'Pr. Antônio Chaves Crus',
       pastorRole: r.pastorrole || 'Pastor Presidente / Dirigente',
       closingDay: Number(r.closingday) || 1,
@@ -521,8 +538,8 @@ apiRouter.post('/settings', async (req, res) => {
   try {
     const s = req.body;
     await pool.query(
-      `INSERT INTO settings (id, institutionname, cnpj, address, email, president, treasurername, treasurerrole, pastorname, pastorrole, closingday, logo)
-       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO settings (id, institutionname, cnpj, address, email, president, treasurername, treasurerrole, treasurersignature, pastorname, pastorrole, closingday, logo)
+       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (id) DO UPDATE SET
          institutionname = EXCLUDED.institutionname,
          cnpj = EXCLUDED.cnpj,
@@ -531,6 +548,7 @@ apiRouter.post('/settings', async (req, res) => {
          president = EXCLUDED.president,
          treasurername = EXCLUDED.treasurername,
          treasurerrole = EXCLUDED.treasurerrole,
+         treasurersignature = EXCLUDED.treasurersignature,
          pastorname = EXCLUDED.pastorname,
          pastorrole = EXCLUDED.pastorrole,
          closingday = EXCLUDED.closingday,
@@ -543,6 +561,7 @@ apiRouter.post('/settings', async (req, res) => {
         s.president,
         s.treasurerName,
         s.treasurerRole,
+        s.treasurerSignature || '',
         s.pastorName,
         s.pastorRole,
         s.closingDay || 1,
@@ -567,6 +586,8 @@ apiRouter.get('/users', async (req, res) => {
       email: u.email || '',
       phone: u.phone || '',
       photo: u.photo || '',
+      signature: u.signature || '',
+      signatureType: u.signature_type || 'UPLOADED',
       role: u.role,
       institution: u.institution,
       active: !!u.active,
@@ -589,15 +610,15 @@ apiRouter.post('/users', async (req, res) => {
       const current = existing.rows[0];
       const password = user.password ? user.password : current.password;
       await pool.query(
-        `UPDATE users SET username = $1, password = $2, name = $3, email = $4, phone = $5, photo = $6, role = $7, institution = $8, active = $9, nodiscount = $10
-         WHERE id = $11`,
-        [user.username, password, user.name, user.email, user.phone, user.photo, finalRole, user.institution, user.active ?? true, isDeptTreasurer, id]
+        `UPDATE users SET username = $1, password = $2, name = $3, email = $4, phone = $5, photo = $6, signature = $7, signature_type = $8, role = $9, institution = $10, active = $11, nodiscount = $12
+         WHERE id = $13`,
+        [user.username, password, user.name, user.email, user.phone, user.photo, user.signature || '', user.signatureType || 'UPLOADED', finalRole, user.institution, user.active ?? true, isDeptTreasurer, id]
       );
     } else {
       await pool.query(
-        `INSERT INTO users (id, username, password, name, email, phone, photo, role, institution, active, nodiscount)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [id, user.username, user.password || '123456', user.name, user.email, user.phone, user.photo, finalRole, user.institution, user.active ?? true, isDeptTreasurer]
+        `INSERT INTO users (id, username, password, name, email, phone, photo, signature, signature_type, role, institution, active, nodiscount)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [id, user.username, user.password || '123456', user.name, user.email || '', user.phone || '', user.photo || '', user.signature || '', user.signatureType || 'UPLOADED', finalRole, user.institution || '', user.active ?? true, isDeptTreasurer]
       );
     }
     res.json({ success: true, id });
@@ -1151,6 +1172,8 @@ function mapReceiptFromDb(r: any) {
     city: r.city,
     treasurerName: r.treasurername,
     treasurerRole: r.treasurerrole || undefined,
+    treasurerSignature: r.treasurersignature || undefined,
+    treasurerSignatureType: r.treasurersignature_type || 'UPLOADED',
     pastorName: r.pastorname,
     pastorRole: r.pastorrole || undefined,
     institutionName: r.institutionname,
@@ -1187,8 +1210,8 @@ apiRouter.post('/receipts', async (req, res) => {
     await pool.query(
       `INSERT INTO receipts (
         id, number, type, amount, personname, docnumber, description, date, city,
-        treasurername, treasurerrole, pastorname, pastorrole, institutionname, tithes, offerings, specialofferings
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        treasurername, treasurerrole, treasurersignature, treasurersignature_type, pastorname, pastorrole, institutionname, tithes, offerings, specialofferings
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       ON CONFLICT (id) DO UPDATE SET
         number = EXCLUDED.number,
         type = EXCLUDED.type,
@@ -1200,6 +1223,8 @@ apiRouter.post('/receipts', async (req, res) => {
         city = EXCLUDED.city,
         treasurername = EXCLUDED.treasurername,
         treasurerrole = EXCLUDED.treasurerrole,
+        treasurersignature = EXCLUDED.treasurersignature,
+        treasurersignature_type = EXCLUDED.treasurersignature_type,
         pastorname = EXCLUDED.pastorname,
         pastorrole = EXCLUDED.pastorrole,
         institutionname = EXCLUDED.institutionname,
@@ -1218,6 +1243,8 @@ apiRouter.post('/receipts', async (req, res) => {
         r.city,
         r.treasurerName,
         r.treasurerRole || null,
+        r.treasurerSignature || null,
+        r.treasurerSignatureType || 'UPLOADED',
         r.pastorName,
         r.pastorRole || null,
         r.institutionName,
