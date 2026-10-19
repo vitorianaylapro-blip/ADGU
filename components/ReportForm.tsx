@@ -20,7 +20,7 @@ import {
   Cloud,
   ExternalLink,
 } from 'lucide-react';
-import { saveReport, getSettings, getTransactions, getUsers } from '../services/storageService';
+import { saveReport, getSettings, getTransactions, getUsers, getReports } from '../services/storageService';
 import { sendReportEmailToAdmin } from '../services/emailService';
 import {
   isGoogleDriveConfigured,
@@ -161,8 +161,17 @@ export const ReportForm: React.FC<ReportFormProps> = ({
           }
         })
         .catch(() => {});
+    } else {
+      getReports(session.institution).then((reports) => {
+        if (reports && reports.length > 0) {
+          const sorted = [...reports].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+          if (sorted[0] && typeof sorted[0].currentBalance === 'number') {
+            setPreviousBalance(sorted[0].currentBalance);
+          }
+        }
+      }).catch(() => {});
     }
-  }, [initialData]);
+  }, [initialData, session.institution]);
 
   useEffect(() => {
     if (date) {
@@ -516,9 +525,9 @@ export const ReportForm: React.FC<ReportFormProps> = ({
         <div className="flex items-center gap-4">
           <button
             onClick={onCancel}
-            className="p-3 bg-white text-slate-400 rounded-xl shadow-sm hover:text-[#1d4ed8] transition-colors active-scale"
+            className="flex items-center gap-2 px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-2xl shadow-xs hover:text-[#1d4ed8] hover:border-blue-200 transition-all active-scale text-[9px] font-black uppercase tracking-widest"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={16} /> Voltar às Opções
           </button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -653,6 +662,24 @@ export const ReportForm: React.FC<ReportFormProps> = ({
               </div>
               <p className="text-[9px] text-slate-500 font-semibold mt-2">
                 Os relatórios são semanais. Informe o dia do culto ou domingo deste fechamento.
+              </p>
+            </div>
+
+            <div className="max-w-md bg-emerald-50/50 p-4 rounded-3xl border border-emerald-100/80">
+              <label className="text-[10px] font-black text-emerald-800 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                <Wallet size={14} /> Saldo Anterior (Caixa Inicial do Período)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                disabled={readOnly}
+                value={previousBalance || ''}
+                onChange={(e) => setPreviousBalance(Number(e.target.value))}
+                className="w-full p-3.5 bg-white rounded-2xl font-black text-sm outline-none border border-emerald-200 text-emerald-950 focus:border-emerald-500 transition-all"
+                placeholder="0,00"
+              />
+              <p className="text-[9px] text-emerald-700 font-semibold mt-1.5">
+                Valor herdado do saldo final do relatório anterior. Ajuste se necessário.
               </p>
             </div>
 
