@@ -1862,7 +1862,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-2 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       
       {/* Printable Area Hook for Native Browser Print (@media print in index.css) */}
       <div id="printable-receipt-area" className="hidden print:block p-2 bg-white text-slate-900 font-sans">
@@ -1903,35 +1903,35 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
       </div>
 
       {/* Screen Header Banner */}
-      <div className="bg-gradient-to-br from-teal-900 via-teal-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+      <div className="bg-gradient-to-br from-teal-900 via-teal-800 to-slate-900 rounded-3xl p-4 sm:p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 bg-teal-500/20 border border-teal-400/30 px-3 py-1 rounded-full text-teal-200 text-xs font-bold uppercase tracking-widest mb-3">
-            <Coins size={14} /> Emissão Oficial da Tesouraria ADGU
+          <div className="inline-flex items-center gap-2 bg-teal-500/20 border border-teal-400/30 px-3 py-1 rounded-full text-teal-200 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-2">
+            <Coins size={12} /> Tesouraria ADGU
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Receita Diária & Recibos</h1>
-          <p className="text-xs sm:text-sm text-teal-100 mt-1 max-w-2xl">
-            Emita o fechamento do culto (<strong>Receita Diária</strong>), <strong>Recibos de Despesa</strong> para fornecedores ou <strong>Comprovante para Membro</strong>, 100% configurado para impressão em A4 (2 vias) ou A5.
+          <h1 className="text-xl sm:text-3xl font-black tracking-tight">Receita & Recibos</h1>
+          <p className="text-[10px] sm:text-sm text-teal-100 mt-1 max-w-lg">
+            Emita receitas diárias, despesas ou recibos de membros.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 bg-white/10 p-1.5 rounded-2xl backdrop-blur-md border border-white/10 w-full md:w-auto">
+        <div className="flex gap-1 bg-white/10 p-1 rounded-xl backdrop-blur-md border border-white/10 w-full md:w-auto">
           <button
             onClick={() => setActiveTab('CREATE')}
-            className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'CREATE' ? 'bg-white text-teal-950 shadow-lg' : 'text-teal-100 hover:bg-white/10'}`}
+            className={`flex-1 px-3 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 ${activeTab === 'CREATE' ? 'bg-white text-teal-950 shadow-lg' : 'text-teal-100 hover:bg-white/10'}`}
           >
-            <Plus size={16} /> Emitir Recibo
+            <Plus size={14} /> Emitir
           </button>
           <button
             onClick={() => setActiveTab('HISTORY')}
-            className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'HISTORY' ? 'bg-white text-teal-950 shadow-lg' : 'text-teal-100 hover:bg-white/10'}`}
+            className={`flex-1 px-3 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 ${activeTab === 'HISTORY' ? 'bg-white text-teal-950 shadow-lg' : 'text-teal-100 hover:bg-white/10'}`}
           >
-            <FileText size={16} /> Histórico ({receipts.length})
+            <FileText size={14} /> Hist.
           </button>
           <button
             onClick={() => setActiveTab('SETTINGS')}
-            className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'SETTINGS' ? 'bg-white text-teal-950 shadow-lg' : 'text-teal-100 hover:bg-white/10'}`}
+            className={`flex-1 px-3 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 ${activeTab === 'SETTINGS' ? 'bg-white text-teal-950 shadow-lg' : 'text-teal-100 hover:bg-white/10'}`}
           >
-            <Settings2 size={16} /> Configurar Recibo
+            <Settings2 size={14} /> Config.
           </button>
         </div>
       </div>
