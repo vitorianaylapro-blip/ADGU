@@ -7,6 +7,7 @@ import {
   isSedeTransferRevenue,
   OfficialReportPDFData,
   SystemSettings,
+  isReportExemptFromDiscount,
 } from '../services/reportPdfService';
 import { Logo } from './Logo';
 
@@ -249,7 +250,7 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
         <div className="space-y-1 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-[#1d4ed8] border border-blue-200">
-              RELATÓRIO FINANCEIRO SEMANAL
+              {isReportExemptFromDiscount(report as any) || report.noDiscount ? 'RELATÓRIO FINANCEIRO MENSAL' : 'RELATÓRIO FINANCEIRO SEMANAL'}
             </span>
             <span className="text-[10px] font-black text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
               DATA: <span className="text-[#1d4ed8] font-black">{dateFormatted}</span>
@@ -449,7 +450,7 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
         {/* Assinaturas */}
         <div className="pt-6 px-4 print:pt-5 space-y-4">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
-            Fechamento do Relatório Financeiro Semanal — Data: <span className="text-[#1d4ed8] font-black">{dateFormatted}</span>
+            Fechamento do Relatório Financeiro {isReportExemptFromDiscount(report as any) || report.noDiscount ? 'Mensal' : 'Semanal'} — Data: <span className="text-[#1d4ed8] font-black">{dateFormatted}</span>
           </p>
           <div className="grid grid-cols-2 gap-10">
             <div className="text-center">
@@ -466,6 +467,9 @@ export const PrintableReportView: React.FC<PrintableReportViewProps> = ({
               </div>
             </div>
             <div className="text-center">
+              <div className="h-16 flex items-center justify-center">
+                {/* Space for Pastor Signature if needed, or keep empty */}
+              </div>
               <div className="border-t border-slate-400 pt-1.5">
                 <p className="text-[10px] font-black text-[#0f172a] uppercase leading-tight">
                   {president.toUpperCase()}

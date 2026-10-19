@@ -677,14 +677,15 @@ export function formatNormalReportText(
   const dateFormatted = formatDateBR(rawDate) || 'N/D';
   const compFormatted = getCompetenceFromDate(rawDate) || data.dateLabel || 'GERAL';
 
+  const isMonthly = isReportExemptFromDiscount(data as any) || data.noDiscount;
   const lines: string[] = [
     instTitle,
-    'RELATÓRIO FINANCEIRO SEMANAL',
+    isMonthly ? 'RELATÓRIO FINANCEIRO MENSAL' : 'RELATÓRIO FINANCEIRO SEMANAL',
     `CONGREGAÇÃO / UNIDADE: ${data.institutionName.toUpperCase()}`,
     `CNPJ: ${cnpj}`,
     `PR. PRESIDENTE: ${president}`,
     `TESOUREIRO / RESPONSÁVEL: ${data.reporterName.toUpperCase()}`,
-    `DATA DO RELATÓRIO (SEMANAL): ${dateFormatted}`,
+    isMonthly ? `DATA DO RELATÓRIO (MENSAL): ${dateFormatted}` : `DATA DO RELATÓRIO (SEMANAL): ${dateFormatted}`,
     `COMPETÊNCIA: ${compFormatted}`,
     '',
     'ENTRADAS / RECEITAS',
@@ -1016,7 +1017,8 @@ export const buildNormalReportPDF = (
 
   doc.setFontSize(9.5);
   doc.setTextColor(29, 78, 216);
-  doc.text(`RELATÓRIO FINANCEIRO SEMANAL - ${(report.institutionName || 'SEDE').toUpperCase()}`, textStartX, 18);
+  const isMonthlyPdf = isReportExemptFromDiscount(report as any) || report.noDiscount;
+  doc.text(`${isMonthlyPdf ? 'RELATÓRIO FINANCEIRO MENSAL' : 'RELATÓRIO FINANCEIRO SEMANAL'} - ${(report.institutionName || 'SEDE').toUpperCase()}`, textStartX, 18);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
