@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserAccount, UserSession } from '../types';
 import { getUsers, updateUserStatus, saveUser, deleteUser } from '../services/storageService';
-import { UserCheck, UserX, Mail, Phone, PlusCircle, X, Loader2, CheckCircle, Shield, Key, UserCircle, Edit3, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
+import { UserCheck, UserX, Mail, Phone, PlusCircle, X, Loader2, CheckCircle, Shield, Key, UserCircle, Edit3, RefreshCw, Trash2, AlertTriangle, UploadCloud } from 'lucide-react';
 
 export const UserManagement: React.FC<{ session: UserSession }> = ({ session }) => {
   const [users, setUsers] = useState<UserAccount[]>([]);
