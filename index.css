@@ -37,6 +37,7 @@ body {
   @page {
     size: A4 portrait;
     margin: 6mm 8mm;
+    page-orientation: portrait;
   }
 
   html, body {
