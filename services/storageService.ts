@@ -163,6 +163,7 @@ function mapUserFromDb(u: any): UserAccount {
     email: u.email || '',
     phone: u.phone || '',
     photo: u.photo || '',
+    signature: u.signature || '',
     role: u.role,
     institution: u.institution,
     active: !!u.active,
@@ -390,11 +391,11 @@ export const saveUser = async (user: Partial<UserAccount>) => {
     try {
       const pwd = user.password || '123456';
       await sql`
-        INSERT INTO users (id, username, password, name, email, phone, photo, role, institution, active, nodiscount)
-        VALUES (${id}, ${user.username || ''}, ${pwd}, ${user.name || ''}, ${user.email || ''}, ${user.phone || ''}, ${user.photo || ''}, ${finalRole}, ${user.institution || ''}, ${user.active ?? true}, ${isDeptTreasurer})
+        INSERT INTO users (id, username, password, name, email, phone, photo, signature, role, institution, active, nodiscount)
+        VALUES (${id}, ${user.username || ''}, ${pwd}, ${user.name || ''}, ${user.email || ''}, ${user.phone || ''}, ${user.photo || ''}, ${user.signature || ''}, ${finalRole}, ${user.institution || ''}, ${user.active ?? true}, ${isDeptTreasurer})
         ON CONFLICT (username) DO UPDATE SET
           name = EXCLUDED.name, email = EXCLUDED.email, phone = EXCLUDED.phone,
-          photo = EXCLUDED.photo, role = EXCLUDED.role, institution = EXCLUDED.institution,
+          photo = EXCLUDED.photo, signature = EXCLUDED.signature, role = EXCLUDED.role, institution = EXCLUDED.institution,
           active = EXCLUDED.active, nodiscount = EXCLUDED.nodiscount
       `;
     } catch (directErr) {
@@ -415,6 +416,7 @@ export const saveUser = async (user: Partial<UserAccount>) => {
     email: user.email || '',
     phone: user.phone || '',
     photo: user.photo || '',
+    signature: user.signature || '',
     role: finalRole,
     institution: user.institution || '',
     active: user.active ?? true,

@@ -80,6 +80,41 @@ export const Settings: React.FC = () => {
     }
   };
 
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'treasurerSignature' | 'pastorSignature') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            // Simple threshold: treat light pixels as transparent
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              // Assuming signature is dark, white-ish background
+              if (r > 200 && g > 200 && b > 200) {
+                data[i + 3] = 0; // Set alpha to transparent
+              }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            setSettings({ ...settings, [field]: canvas.toDataURL('image/png') });
+          }
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -196,7 +231,7 @@ export const Settings: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 md:col-span-2">
               <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-3">Nome do Tesoureiro Responsável</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
@@ -205,11 +240,42 @@ export const Settings: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-3">Cargo do Tesoureiro (Assinatura)</label>
+              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-3">CPF do Tesoureiro</label>
+              <div className="relative">
+                <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                <input type="text" value={settings.treasurerCpf || ''} onChange={e => setSettings({...settings, treasurerCpf: e.target.value})} className="w-full pl-11 pr-4 py-4 bg-slate-50 rounded-2xl font-bold text-xs border border-transparent focus:border-indigo-100 outline-none transition-all" placeholder="000.000.000-00" />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-3">Cargo do Tesoureiro</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                <input type="text" value={settings.treasurerRole || ''} onChange={e => setSettings({...settings, treasurerRole: e.target.value})} className="w-full pl-11 pr-4 py-4 bg-slate-50 rounded-2xl font-bold text-xs border border-transparent focus:border-indigo-100 outline-none transition-all" placeholder="Tesoureiro Responsável" />
+                <input type="text" value={settings.treasurerRole || ''} onChange={e => setSettings({...settings, treasurerRole: e.target.value})} className="w-full pl-11 pr-4 py-4 bg-slate-50 rounded-2xl font-bold text-xs border border-transparent focus:border-indigo-100 outline-none transition-all" placeholder="Tesoureiro" />
               </div>
+            </div>
+
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-3">Assinatura do Tesoureiro</label>
+              <div className="flex items-center gap-4">
+                <div className="w-40 h-20 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden">
+                  {settings.treasurerSignature ? (
+                    <img src={settings.treasurerSignature} className="max-h-full object-contain" alt="Assinatura" />
+                  ) : (
+                    <span className="text-[8px] text-slate-400">Sem assinatura</span>
+                  )}
+                </div>
+                <label className="p-3 bg-[#1d4ed8] text-white rounded-2xl cursor-pointer hover:bg-blue-800 transition-all">
+                  <UploadCloud size={20} />
+                  <input type="file" className="hidden" accept="image/*" onChange={e => handleSignatureUpload(e, 'treasurerSignature')} />
+                </label>
+                {settings.treasurerSignature && (
+                  <button type="button" onClick={() => setSettings({...settings, treasurerSignature: ''})} className="px-3 py-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-2xl text-[8px] font-black uppercase tracking-widest transition-all">
+                    Remover
+                  </button>
+                )}
+              </div>
+              <p className="text-[6px] font-bold text-slate-400 uppercase tracking-widest ml-3 mt-1">Foto da assinatura: O sistema removerá o fundo automaticamente.</p>
             </div>
 
             <div className="space-y-1 md:col-span-2">

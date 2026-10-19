@@ -125,7 +125,7 @@ export const UserManagement: React.FC<{ session: UserSession }> = ({ session }) 
         ...formData,
         role: finalRole,
         noDiscount: isDept
-      });
+      } as UserAccount);
       showToast(isEditing ? "Dados atualizados com sucesso!" : "Tesoureiro cadastrado com sucesso!");
       setShowModal(false);
       loadUsers();
@@ -135,6 +135,39 @@ export const UserManagement: React.FC<{ session: UserSession }> = ({ session }) 
       showToast(`Erro ao salvar usuário: ${msg}`, true);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              if (r > 200 && g > 200 && b > 200) {
+                data[i + 3] = 0;
+              }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            setFormData({ ...formData, signature: canvas.toDataURL('image/png') });
+          }
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -424,6 +457,23 @@ export const UserManagement: React.FC<{ session: UserSession }> = ({ session }) 
                           />
                         </div>
                       </div>
+                   </div>
+
+                   <div className="space-y-1">
+                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-3">Assinatura Digital</label>
+                     <div className="flex items-center gap-4">
+                       <div className="w-full h-20 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden">
+                         {formData.signature ? (
+                           <img src={formData.signature} className="max-h-full object-contain" alt="Assinatura" />
+                         ) : (
+                           <span className="text-[8px] text-slate-400">Sem assinatura</span>
+                         )}
+                       </div>
+                       <label className="p-4 bg-[#1d4ed8] text-white rounded-2xl cursor-pointer hover:bg-blue-800 transition-all">
+                         <UploadCloud size={20} />
+                         <input type="file" className="hidden" accept="image/*" onChange={handleSignatureUpload} />
+                       </label>
+                     </div>
                    </div>
 
                    <div className="space-y-1">

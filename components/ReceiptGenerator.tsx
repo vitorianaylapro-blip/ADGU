@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserSession, ReceiptRecord } from '../types';
-import { getReceipts, saveReceipt, deleteReceipt, getSettings, saveSettings, SystemSettings } from '../services/storageService';
+import { getReceipts, saveReceipt, deleteReceipt, getSettings, saveSettings, SystemSettings, saveUser, getUsers } from '../services/storageService';
 import { valorPorExtenso } from '../services/extensoService';
 import { jsPDF } from 'jspdf';
 import { 
@@ -57,6 +57,7 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<import('../types').UserAccount | null>(null);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [previewVia, setPreviewVia] = useState<'1' | '2'>('1');
   const [selectedReceiptForPreview, setSelectedReceiptForPreview] = useState<ReceiptRecord | null>(null);
@@ -109,8 +110,10 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
     try {
       const data = await getReceipts(session.role === 'ADMIN' ? 'ALL' : session.institution);
       setReceipts(data);
+      const allUsers = await getUsers();
+      setCurrentUser(allUsers.find(u => u.id === session.id) || null);
     } catch (e) {
-      console.error("Erro ao carregar recibos:", e);
+      console.error("Erro ao carregar dados:", e);
     } finally {
       setLoading(false);
     }
@@ -162,6 +165,46 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
 
   const formatBRL = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+  };
+
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && currentUser) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            // Simple threshold: treat light pixels as transparent
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              // Assuming signature is dark, white-ish background
+              if (r > 200 && g > 200 && b > 200) {
+                data[i + 3] = 0; // Set alpha to transparent
+              }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            const signatureData = canvas.toDataURL('image/png');
+            const updatedUser = { ...currentUser, signature: signatureData };
+            setCurrentUser(updatedUser);
+            saveUser(updatedUser.id, updatedUser);
+            setSuccessMsg("Assinatura salva com sucesso!");
+            setTimeout(() => setSuccessMsg(null), 3500);
+          }
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const totalCalculated = type === 'RECEITA' 
@@ -1773,7 +1816,11 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
               <span className="text-[9px] font-black text-teal-800 uppercase tracking-wider block">
                 {signatureLayout === 'SINGLE_TREASURER' ? 'TESOURARIA GERAL' : 'DIRETORIA / DIRIGENTE RESPONSÁVEL'}
               </span>
-              <div className={`bg-white ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`} />
+              <div className={`flex items-center justify-center ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`}>
+                {signatureLayout === 'SINGLE_TREASURER' && rec.treasurerSignature ? (
+                  <img src={rec.treasurerSignature} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
+                ) : null}
+              </div>
               <div className="w-4/5 mx-auto border-b-2 border-slate-700 mb-1" />
               <span className={`font-black text-slate-900 uppercase block ${isLarge ? 'text-sm' : 'text-xs'}`}>
                 {signatureLayout === 'SINGLE_TREASURER' ? rec.treasurerName : rec.pastorName}
@@ -1787,7 +1834,11 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
           <div className={`grid grid-cols-2 gap-3 text-center ${isCompact ? 'pt-1 gap-2' : 'pt-2'}`}>
             <div className={`bg-white rounded-2xl border-2 border-slate-200 flex flex-col justify-between ${isLarge ? 'p-3.5 min-h-[160px]' : isCompact ? 'p-1.5 min-h-[80px]' : 'p-2.5 min-h-[120px]'}`}>
               <span className="text-[8px] font-black text-teal-800 uppercase tracking-wider block">TESOURARIA GERAL</span>
-              <div className={`bg-white ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`} />
+              <div className={`flex items-center justify-center ${isLarge ? 'h-24' : isCompact ? 'h-10' : 'h-16'}`}>
+                {rec.treasurerSignature ? (
+                  <img src={rec.treasurerSignature} className="max-h-full object-contain" alt="Assinatura Tesoureiro" />
+                ) : null}
+              </div>
               <div className="w-full border-b border-slate-500 mb-1" />
               <span className={`font-black text-slate-900 leading-tight block ${isLarge ? 'text-xs' : 'text-[10px]'}`}>{rec.treasurerName.toUpperCase()}</span>
               <span className="text-[8px] text-slate-500 font-medium block">{rec.treasurerRole}</span>
@@ -1884,6 +1935,9 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
           </button>
         </div>
       </div>
+
+      {/* Signature Management Logic */}
+      {/* (To be implemented in SETTINGS tab) */}
 
       {successMsg && (
         <div className="p-4 bg-blue-50 border border-blue-200 text-[#1d4ed8] rounded-2xl flex items-center gap-3 animate-fade-in shadow-sm">
@@ -2686,6 +2740,24 @@ export const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({ session }) =
                 required
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs font-bold focus:border-teal-500 outline-none"
               />
+            </div>
+
+            {/* Signature Upload */}
+            <div className="sm:col-span-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider block mb-3">Minha Assinatura Digital (Aparecerá nos recibos)</label>
+              <div className="flex items-center gap-4">
+                <div className="w-32 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden">
+                  {currentUser?.signature ? (
+                    <img src={currentUser.signature} className="max-h-full object-contain" alt="Assinatura" />
+                  ) : (
+                    <span className="text-[8px] text-slate-400">Sem assinatura</span>
+                  )}
+                </div>
+                <label className="px-4 py-2 bg-teal-600 text-white rounded-xl text-[10px] font-black cursor-pointer hover:bg-teal-700 transition-all">
+                  Upload Assinatura
+                  <input type="file" className="hidden" accept="image/*" onChange={handleSignatureUpload} />
+                </label>
+              </div>
             </div>
 
             <div className="sm:col-span-2 space-y-1">

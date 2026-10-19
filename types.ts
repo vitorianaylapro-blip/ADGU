@@ -114,6 +114,7 @@ export interface UserAccount {
   email?: string;
   phone?: string;
   photo?: string;
+  signature?: string;
   role: UserRole;
   institution: string;
   active: boolean;
